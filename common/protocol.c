@@ -3,9 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 
-void protocol_create_message(message_t *msg, msg_type_t type, 
-                             const char *sender, const char *recipient, 
-                             const char *data)
+void protocol_create_message(message_t *msg, msg_type_t type, const char *sender, const char *recipient, const char *data)
 {
     msg->type = type;
     strncpy(msg->sender, sender ? sender : "", sizeof(msg->sender) - 1);
