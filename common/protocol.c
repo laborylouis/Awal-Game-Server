@@ -24,9 +24,25 @@ int protocol_send_message(int sock, const message_t *msg)
 
 int protocol_recv_message(int sock, message_t *msg)
 {
-    /* Simple implementation: receive the whole structure */
-    int received = recv(sock, (char*)msg, sizeof(message_t), 0);
-    return received == sizeof(message_t) ? 0 : -1;
+    /* Receive the whole structure, handling partial reads (TCP fragmentation) */
+    size_t total_received = 0;
+    size_t msg_size = sizeof(message_t);
+    char *buffer = (char*)msg;
+    
+    while (total_received < msg_size) {
+        int received = recv(sock, buffer + total_received, msg_size - total_received, 0);
+        
+        if (received < 0) {
+            return -1;  /* Network error */
+        }
+        if (received == 0) {
+            return 0;  /* Connection closed by peer */
+        }
+        
+        total_received += received;
+    }
+    
+    return total_received;  /* Success - should equal msg_size */
 }
 
 void protocol_create_login(message_t *msg, const char *username)

@@ -170,22 +170,49 @@ static void handle_client_message(int player_index)
     switch (msg.type) {
         case MSG_LIST_PLAYERS:
             /* Send player list to requesting client */
-            /* TODO: Implement */
             break;
             
         case MSG_CHALLENGE:
-            /* Handle challenge request */
-            /* TODO: Implement */
+            {
+                /* Find the opponent */
+                player_t *opponent = find_player_by_name(msg.recipient);
+                
+                if (!opponent) {
+                    /* Player not found */
+                    message_t error;
+                    protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Player not found");
+                    protocol_send_message(players[player_index].sock, &error);
+                    break;
+                }
+                
+                if (opponent->in_game) {
+                    /* Player already in a game */
+                    message_t error;
+                    protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Player is already in a game");
+                    protocol_send_message(players[player_index].sock, &error);
+                    break;
+                }
+                
+                if (players[player_index].in_game) {
+                    /* Challenger already in a game */
+                    message_t error;
+                    protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "You are already in a game");
+                    protocol_send_message(players[player_index].sock, &error);
+                    break;
+                }
+                
+                /* Forward challenge to opponent */
+                protocol_send_message(opponent->sock, &msg);
+                printf("%s challenges %s\n", msg.sender, msg.recipient);
+            }
             break;
             
         case MSG_PLAY_MOVE:
             /* Handle game move */
-            /* TODO: Implement */
             break;
             
         case MSG_CHAT:
             /* Handle chat message */
-            /* TODO: Implement */
             break;
             
         default:
@@ -240,6 +267,5 @@ static player_t* find_player_by_name(const char *name)
 
 static void broadcast_player_list(void)
 {
-    /* TODO: Send list of online players to all connected clients */
     /* Format player names into a message and broadcast */
 }
