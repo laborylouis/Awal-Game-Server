@@ -35,9 +35,16 @@ $(CLIENT_BIN): $(COMMON_OBJS) $(CLIENT_OBJS)
 	@echo "Client built successfully: $(CLIENT_BIN)"
 
 # Test executable (optional)
-test: $(COMMON_OBJS) $(GAME_OBJS) tests/test_awale.o
+test: $(GAME_OBJS) test/test_awale.o
 	$(CC) $(CFLAGS) -o $(TEST_BIN) $^ $(LDFLAGS)
 	@echo "Test built successfully: $(TEST_BIN)"
+
+# Build and run the interactive test game
+test_awale: $(GAME_OBJS) test/test_awale.o
+	$(CC) $(CFLAGS) -o $(TEST_BIN) $^ $(LDFLAGS)
+	@echo "Test built successfully: $(TEST_BIN)"
+	@echo "Running interactive Awalé game..."
+	./$(TEST_BIN)
 
 # Compile .c to .o
 %.o: %.c
@@ -49,9 +56,8 @@ clean:
 	rm -f $(GAME_DIR)/*.o
 	rm -f $(SERVER_DIR)/*.o
 	rm -f $(CLIENT_DIR)/*.o
-	rm -f tests/*.o
+	rm -f test/*.o
 	rm -f $(SERVER_BIN) $(CLIENT_BIN) $(TEST_BIN)
-	rm -f test_awale test_game
 	rm -f *.o *.awl
 	@echo "Cleaned build artifacts"
 
@@ -66,4 +72,4 @@ run-client: $(CLIENT_BIN)
 # Rebuild everything
 rebuild: clean all
 
-.PHONY: all clean test run-server run-client rebuild
+.PHONY: all clean test test_awale run-server run-client rebuild

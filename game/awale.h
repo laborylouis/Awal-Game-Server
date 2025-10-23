@@ -32,9 +32,9 @@ void awale_free(awale_game_t *game);
 void awale_reset(awale_game_t *game);
 
 /* Game operations */
+void awale_switch_player(awale_game_t *game);
 awale_status_t awale_play_move(awale_game_t *game, int hole);
 int awale_is_valid_move(const awale_game_t *game, int hole);
-void awale_switch_player(awale_game_t *game);
 
 /* Game state queries */
 int awale_is_game_over(const awale_game_t *game);
