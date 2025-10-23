@@ -53,3 +53,18 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Project-specific executables
+awale_server
+awale_client
+test_awale
+test_game
+
+# Game save files
+*.awl
+
+# Editor backup files
+*~
+*.swp
+*.swo
+*.bak

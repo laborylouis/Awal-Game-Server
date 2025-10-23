@@ -51,6 +51,8 @@ clean:
 	rm -f $(CLIENT_DIR)/*.o
 	rm -f tests/*.o
 	rm -f $(SERVER_BIN) $(CLIENT_BIN) $(TEST_BIN)
+	rm -f test_awale test_game
+	rm -f *.o *.awl
 	@echo "Cleaned build artifacts"
 
 # Run server
