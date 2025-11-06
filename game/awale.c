@@ -158,86 +158,95 @@ int awale_get_score(const awale_game_t *game, int player){
     return game->scores[player];
 }
 
-void awale_print(const awale_game_t *game){
+void awale_print(const awale_game_t *game, const char *player0_name, const char *player1_name){
     if (!game) return;
-    
+
     printf("\n");
     printf("           ");
     for (int i = TOTAL_HOLES - 1; i >= HOLES_PER_PLAYER; i--) {
         printf(" %2d  ", i);
     }
     printf("\n");
-    
-    printf("Player 1:  ");
+
+    /* Top row is player 1 (holes 6..11) */
+    printf("%s:  ", player1_name ? player1_name : "Player 1");
     for (int i = TOTAL_HOLES - 1; i >= HOLES_PER_PLAYER; i--) {
         printf("[%2d] ", game->holes[i]);
     }
     printf("  Score: %d\n", game->scores[1]);
-    
-    printf("Player 0:  ");
+
+    /* Bottom row is player 0 (holes 0..5) */
+    printf("%s:  ", player0_name ? player0_name : "Player 0");
     for (int i = 0; i < HOLES_PER_PLAYER; i++) {
         printf("[%2d] ", game->holes[i]);
     }
     printf("  Score: %d\n", game->scores[0]);
-    
+
     printf("           ");
     for (int i = 0; i < HOLES_PER_PLAYER; i++) {
         printf(" %2d  ", i);
     }
     printf("\n");
-    
+
     if (game->game_over) {
         printf("\nGAME OVER! ");
         if (game->winner == -1) {
             printf("Draw!\n");
         } else {
-            printf("Winner: Player %d\n", game->winner);
+            const char *wname = (game->winner == 0) ? (player0_name ? player0_name : "Player 0") : (player1_name ? player1_name : "Player 1");
+            printf("Winner: %s\n", wname);
         }
     } else {
-        printf("\nCurrent player: %d\n", game->current_player);
+        const char *cur = (game->current_player == 0) ? (player0_name ? player0_name : "Player 0") : (player1_name ? player1_name : "Player 1");
+        printf("\nCurrent player: %s\n", cur);
     }
     printf("\n");
 }
 
-void awale_print_to_buffer(const awale_game_t *game, char *buffer, int size){
+
+
+void awale_print_to_buffer(const awale_game_t *game, char *buffer, int size,
+                                     const char *player0_name, const char *player1_name){
     if (!game || !buffer || size <= 0) return;
-    
+
     int offset = 0;
-    
+
     offset += snprintf(buffer + offset, size - offset, "\n");
     offset += snprintf(buffer + offset, size - offset, "           ");
     for (int i = TOTAL_HOLES - 1; i >= HOLES_PER_PLAYER; i--) {
         offset += snprintf(buffer + offset, size - offset, " %2d  ", i);
     }
     offset += snprintf(buffer + offset, size - offset, "\n");
-    
-    offset += snprintf(buffer + offset, size - offset, "Player 1:  ");
+
+    offset += snprintf(buffer + offset, size - offset, "%s:  ", player1_name ? player1_name : "Player 1");
     for (int i = TOTAL_HOLES - 1; i >= HOLES_PER_PLAYER; i--) {
         offset += snprintf(buffer + offset, size - offset, "[%2d] ", game->holes[i]);
     }
     offset += snprintf(buffer + offset, size - offset, "  Score: %d\n", game->scores[1]);
-    
-    offset += snprintf(buffer + offset, size - offset, "Player 0:  ");
+
+    offset += snprintf(buffer + offset, size - offset, "%s:  ", player0_name ? player0_name : "Player 0");
     for (int i = 0; i < HOLES_PER_PLAYER; i++) {
         offset += snprintf(buffer + offset, size - offset, "[%2d] ", game->holes[i]);
     }
     offset += snprintf(buffer + offset, size - offset, "  Score: %d\n", game->scores[0]);
-    
+
     offset += snprintf(buffer + offset, size - offset, "           ");
     for (int i = 0; i < HOLES_PER_PLAYER; i++) {
         offset += snprintf(buffer + offset, size - offset, " %2d  ", i);
     }
     offset += snprintf(buffer + offset, size - offset, "\n");
-    
+
     if (game->game_over) {
         offset += snprintf(buffer + offset, size - offset, "\nGAME OVER! ");
         if (game->winner == -1) {
             offset += snprintf(buffer + offset, size - offset, "Draw!\n");
         } else {
-            offset += snprintf(buffer + offset, size - offset, "Winner: Player %d\n", game->winner);
+            const char *wname = (game->winner == 0) ? (player0_name ? player0_name : "Player 0") : (player1_name ? player1_name : "Player 1");
+            offset += snprintf(buffer + offset, size - offset, "Winner: %s\n", wname);
         }
     } else {
-        offset += snprintf(buffer + offset, size - offset, "\nCurrent player: %d\n", game->current_player);
+        const char *cur = (game->current_player == 0) ? (player0_name ? player0_name : "Player 0") : (player1_name ? player1_name : "Player 1");
+        offset += snprintf(buffer + offset, size - offset, "\nCurrent player: %s\n", cur);
     }
 }
 

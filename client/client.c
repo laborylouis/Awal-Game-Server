@@ -169,7 +169,6 @@ static void handle_user_input(void)
         printf("Challenge sent to %s\n", opponent);
     }
     else if (strncmp(input, "move ", 5) == 0) {
-        /* Play a move */
         if (!in_game) {
             printf("You are not in a game\n");
             return;
@@ -188,6 +187,16 @@ static void handle_user_input(void)
     else if (strcmp(input, "quit") == 0) {
         printf("Disconnecting...\n");
         exit(0);
+    }
+    else if (strncmp(input, "accept ", 7) == 0){
+        message_t msg;
+        protocol_create_message(&msg, MSG_CHALLENGE_ACCEPT, username, input +7, "");
+        protocol_send_message(server_sock, &msg);
+    }
+    else if (strncmp(input, "refuse ", 7) == 0){
+        message_t msg;
+        protocol_create_message(&msg, MSG_CHALLENGE_REFUSE, username, input +7, "");
+        protocol_send_message(server_sock, &msg);
     }
     else {
         printf("Unknown command. Type 'help' for available commands.\n");
@@ -235,6 +244,10 @@ static void handle_server_message(void)
             
         case MSG_ERROR:
             printf("Error: %s\n", msg.data);
+            break;
+
+        case MSG_CHALLENGE_REFUSE:
+            printf("%s\n", msg.data);
             break;
             
         default:

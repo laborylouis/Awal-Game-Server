@@ -42,8 +42,9 @@ int awale_get_winner(const awale_game_t *game);
 int awale_get_score(const awale_game_t *game, int player);
 
 /* Display and persistence */
-void awale_print(const awale_game_t *game);
-void awale_print_to_buffer(const awale_game_t *game, char *buffer, int size);
+void awale_print(const awale_game_t *game, const char *player0_name, const char *player1_name);
+void awale_print_to_buffer(const awale_game_t *game, char *buffer, int size,
+                                     const char *player0_name, const char *player1_name);
 int awale_save(const awale_game_t *game, const char *filename);
 awale_game_t* awale_load(const char *filename);
 

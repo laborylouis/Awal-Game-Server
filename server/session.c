@@ -169,9 +169,11 @@ void session_broadcast_state(int session_id)
     
     game_session_t *session = &sessions[session_id];
     
-    /* Convert game state to string */
+    /* Convert game state to string (use player names) */
     char state_buffer[BUF_SIZE];
-    awale_print_to_buffer(session->game, state_buffer, sizeof(state_buffer));
+    /* session->player1_name corresponds to player 0, player2_name to player 1 */
+    awale_print_to_buffer(session->game, state_buffer, sizeof(state_buffer),
+                                     session->player1_name, session->player2_name);
     
     /* Send to both players */
     message_t msg;

@@ -7,6 +7,7 @@
 #include "../common/net.h"
 #include "../common/protocol.h"
 #include "../game/awale.h"
+#include "session.h"
 
 #define MAX_PLAYERS 100
 
@@ -46,6 +47,7 @@ int main(int argc, char **argv)
 static void init_server(void)
 {
     net_init();
+    sessions_init();
     memset(players, 0, sizeof(players));
     num_players = 0;
 }
@@ -205,6 +207,66 @@ static void handle_client_message(int player_index)
                 protocol_send_message(opponent->sock, &msg);
                 printf("%s challenges %s\n", msg.sender, msg.recipient);
             }
+            break;
+
+        case MSG_CHALLENGE_ACCEPT:
+        {
+            player_t *acceptor = &players[player_index];
+            player_t *challenger = find_player_by_name(msg.recipient);
+            if (!challenger) {
+                message_t error;
+                protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Challenger not found");
+                protocol_send_message(players[player_index].sock, &error);
+                break;
+            }
+            if (challenger->in_game) {
+                message_t error;
+                char reason[BUF_SIZE];
+                snprintf(reason, sizeof(reason), "%s is already in a game", challenger->name);
+                protocol_create_message(&error, MSG_ERROR, "server", msg.sender, reason);
+                protocol_send_message(players[player_index].sock, &error);
+                break;
+            }
+
+            /* Create session: pass correct challenger socket */
+            int session_slot = session_create(acceptor->name, acceptor->sock, challenger->name, challenger->sock);
+            if (session_slot == -1) {
+                message_t error;
+                char reason[BUF_SIZE];
+                snprintf(reason, sizeof(reason), "There is no free session slot");
+                protocol_create_message(&error, MSG_ERROR, "server", msg.sender, reason);
+                protocol_send_message(acceptor->sock, &error);
+                protocol_create_message(&error, MSG_ERROR, "server", msg.recipient, reason);
+                protocol_send_message(challenger->sock, &error);
+                break;
+            }
+
+            acceptor->in_game = 1;
+            challenger->in_game = 1;
+            acceptor->player_index = 1;
+            challenger->player_index = 0;
+
+            printf("%s accepted challenge from %s, session %d created\n", acceptor->name, challenger->name, session_slot);
+        }
+            break;
+
+        case MSG_CHALLENGE_REFUSE:
+        {
+            player_t *challenger = find_player_by_name(msg.recipient);
+            if (!challenger) {
+                message_t error;
+                protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Challenger not found");
+                protocol_send_message(players[player_index].sock, &error);
+                break;
+            }
+
+            message_t refuse_msg;
+            char reason[BUF_SIZE];
+            snprintf(reason, sizeof(reason), "%s refused your challenge", msg.sender);
+            protocol_create_message(&refuse_msg, MSG_CHALLENGE_REFUSE, msg.sender, challenger->name, reason);
+            protocol_send_message(challenger->sock, &refuse_msg);
+            printf("%s refused the challenge from %s\n", msg.sender, challenger->name);
+        }
             break;
             
         case MSG_PLAY_MOVE:

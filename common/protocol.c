@@ -38,7 +38,6 @@ int protocol_recv_message(int sock, message_t *msg)
         if (received == 0) {
             return 0;  /* Connection closed by peer */
         }
-        
         total_received += received;
     }
     
