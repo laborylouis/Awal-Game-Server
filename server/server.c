@@ -3,6 +3,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/select.h>
+#include <time.h>
 
 #include "../common/net.h"
 #include "../common/protocol.h"
@@ -48,6 +49,8 @@ static void init_server(void)
 {
     net_init();
     sessions_init();
+    /* Seed RNG once at startup so rand() produces varied results */
+    srand((unsigned)time(NULL));
     memset(players, 0, sizeof(players));
     num_players = 0;
 }
@@ -228,8 +231,8 @@ static void handle_client_message(int player_index)
                 break;
             }
 
-            /* Create session: pass correct challenger socket */
-            int session_slot = session_create(acceptor->name, acceptor->sock, challenger->name, challenger->sock);
+            /* Create session: challenger should be player0 (first argument) */
+            int session_slot = session_create(challenger->name, challenger->sock, acceptor->name, acceptor->sock);
             if (session_slot == -1) {
                 message_t error;
                 char reason[BUF_SIZE];
@@ -270,7 +273,38 @@ static void handle_client_message(int player_index)
             break;
             
         case MSG_PLAY_MOVE:
-            /* Handle game move */
+        {
+            player_t *player = find_player_by_name(msg.sender);
+            if (!player->in_game) {
+                message_t error;
+                protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "You're not in game !");
+                protocol_send_message(player->sock, &error);
+                break;
+            }
+            int sid = session_find_by_player(player->name);
+            if (sid < 0) {
+                message_t error;
+                protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "No active session");
+                protocol_send_message(player->sock, &error);
+                break;
+            }
+            const char *opponent_name = session_get_opponent_name(sid, player->name);
+            player_t *opponent = find_player_by_name(opponent_name);
+
+            session_handle_move(sid, player->name, atoi(msg.data));
+            session_broadcast_state(sid);
+
+            if (session_find_by_player(player->name) == -1) {
+                if (player) { 
+                    player->in_game = 0; 
+                    player->player_index = -1; 
+                }
+                if (opponent) { 
+                    opponent->in_game = 0; 
+                    opponent->player_index = -1; 
+                }
+            }
+        }
             break;
             
         case MSG_CHAT:

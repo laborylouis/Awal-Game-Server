@@ -14,7 +14,6 @@ typedef struct {
     SOCKET player1_sock;
     SOCKET player2_sock;
     awale_game_t *game;
-    int current_turn; /* 0 or 1 */
 } game_session_t;
 
 #define MAX_SESSIONS 50
@@ -64,7 +63,8 @@ int session_create(const char *player1, SOCKET sock1, const char *player2, SOCKE
     sessions[slot].game = awale_create();
     
     /* Randomly decide who starts */
-    sessions[slot].current_turn = rand() % 2;
+    sessions[slot].game->current_player = rand()%2;
+    
     
     printf("Game session %d created: %s vs %s\n", slot, player1, player2);
     
@@ -210,4 +210,26 @@ void session_notify_game_over(int session_id)
     protocol_send_message(session->player2_sock, &msg);
     
     printf("%s\n", result);
+}
+
+/* Return the opponent's name for a given player in a session, or NULL if not found */
+const char *session_get_opponent_name(int session_id, const char *player_name)
+{
+    if (session_id < 0 || session_id >= MAX_SESSIONS) {
+        return NULL;
+    }
+
+    game_session_t *session = &sessions[session_id];
+    if (!session->active) {
+        return NULL;
+    }
+
+    if (strcmp(session->player1_name, player_name) == 0) {
+        return session->player2_name;
+    }
+    if (strcmp(session->player2_name, player_name) == 0) {
+        return session->player1_name;
+    }
+
+    return NULL;
 }

@@ -168,25 +168,42 @@ void awale_print(const awale_game_t *game, const char *player0_name, const char 
     }
     printf("\n");
 
-    /* Top row is player 1 (holes 6..11) */
-    printf("%s:  ", player1_name ? player1_name : "Player 1");
-    for (int i = TOTAL_HOLES - 1; i >= HOLES_PER_PLAYER; i--) {
-        printf("[%2d] ", game->holes[i]);
-    }
-    printf("  Score: %d\n", game->scores[1]);
+        /* Build padded labels so columns stay aligned for variable-length names */
+        const char *p0 = player0_name ? player0_name : "Player 0";
+        const char *p1 = player1_name ? player1_name : "Player 1";
+        char top_label[128];
+        char bottom_label[128];
+        snprintf(top_label, sizeof(top_label), "%s:  ", p1);
+        snprintf(bottom_label, sizeof(bottom_label), "%s:  ", p0);
+        size_t max_label = strlen(top_label) > strlen(bottom_label) ? strlen(top_label) : strlen(bottom_label);
 
-    /* Bottom row is player 0 (holes 0..5) */
-    printf("%s:  ", player0_name ? player0_name : "Player 0");
-    for (int i = 0; i < HOLES_PER_PLAYER; i++) {
-        printf("[%2d] ", game->holes[i]);
-    }
-    printf("  Score: %d\n", game->scores[0]);
+        /* Header numbers */
+        printf("%*s", (int)max_label, "");
+        for (int i = TOTAL_HOLES - 1; i >= HOLES_PER_PLAYER; i--) {
+            printf(" %2d  ", i);
+        }
+        printf("\n");
 
-    printf("           ");
-    for (int i = 0; i < HOLES_PER_PLAYER; i++) {
-        printf(" %2d  ", i);
-    }
-    printf("\n");
+        /* Top row is player 1 (holes 6..11) */
+        printf("%-*s", (int)max_label, top_label);
+        for (int i = TOTAL_HOLES - 1; i >= HOLES_PER_PLAYER; i--) {
+            printf("[%2d] ", game->holes[i]);
+        }
+        printf("  Score: %d\n", game->scores[1]);
+
+        /* Bottom row is player 0 (holes 0..5) */
+        printf("%-*s", (int)max_label, bottom_label);
+        for (int i = 0; i < HOLES_PER_PLAYER; i++) {
+            printf("[%2d] ", game->holes[i]);
+        }
+        printf("  Score: %d\n", game->scores[0]);
+
+        /* Footer numbers */
+        printf("%*s", (int)max_label, "");
+        for (int i = 0; i < HOLES_PER_PLAYER; i++) {
+            printf(" %2d  ", i);
+        }
+        printf("\n");
 
     if (game->game_over) {
         printf("\nGAME OVER! ");
@@ -218,19 +235,34 @@ void awale_print_to_buffer(const awale_game_t *game, char *buffer, int size,
     }
     offset += snprintf(buffer + offset, size - offset, "\n");
 
-    offset += snprintf(buffer + offset, size - offset, "%s:  ", player1_name ? player1_name : "Player 1");
+    const char *p0 = player0_name ? player0_name : "Player 0";
+    const char *p1 = player1_name ? player1_name : "Player 1";
+    char top_label[128];
+    char bottom_label[128];
+    snprintf(top_label, sizeof(top_label), "%s:  ", p1);
+    snprintf(bottom_label, sizeof(bottom_label), "%s:  ", p0);
+    size_t max_label = strlen(top_label) > strlen(bottom_label) ? strlen(top_label) : strlen(bottom_label);
+
+    offset += snprintf(buffer + offset, size - offset, "\n");
+    offset += snprintf(buffer + offset, size - offset, "%*s", (int)max_label, "");
+    for (int i = TOTAL_HOLES - 1; i >= HOLES_PER_PLAYER; i--) {
+        offset += snprintf(buffer + offset, size - offset, " %2d  ", i);
+    }
+    offset += snprintf(buffer + offset, size - offset, "\n");
+
+    offset += snprintf(buffer + offset, size - offset, "%-*s", (int)max_label, top_label);
     for (int i = TOTAL_HOLES - 1; i >= HOLES_PER_PLAYER; i--) {
         offset += snprintf(buffer + offset, size - offset, "[%2d] ", game->holes[i]);
     }
     offset += snprintf(buffer + offset, size - offset, "  Score: %d\n", game->scores[1]);
 
-    offset += snprintf(buffer + offset, size - offset, "%s:  ", player0_name ? player0_name : "Player 0");
+    offset += snprintf(buffer + offset, size - offset, "%-*s", (int)max_label, bottom_label);
     for (int i = 0; i < HOLES_PER_PLAYER; i++) {
         offset += snprintf(buffer + offset, size - offset, "[%2d] ", game->holes[i]);
     }
     offset += snprintf(buffer + offset, size - offset, "  Score: %d\n", game->scores[0]);
 
-    offset += snprintf(buffer + offset, size - offset, "           ");
+    offset += snprintf(buffer + offset, size - offset, "%*s", (int)max_label, "");
     for (int i = 0; i < HOLES_PER_PLAYER; i++) {
         offset += snprintf(buffer + offset, size - offset, " %2d  ", i);
     }

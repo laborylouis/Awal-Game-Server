@@ -10,5 +10,6 @@ void session_destroy(int session_id);
 int session_handle_move(int session_id, const char *player_name, int hole);
 void session_broadcast_state(int session_id);
 void session_notify_game_over(int session_id);
+const char *session_get_opponent_name(int session_id, const char *player_name);
 
 #endif
