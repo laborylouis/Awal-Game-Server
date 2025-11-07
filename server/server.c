@@ -174,7 +174,30 @@ static void handle_client_message(int player_index)
     /* Handle different message types */
     switch (msg.type) {
         case MSG_LIST_PLAYERS:
-            /* Send player list to requesting client */
+        {
+            /* Build list of online players and send to requester */
+            char list[BUF_SIZE];
+            int offset = 0;
+            for (int i = 0; i < num_players; i++) {
+                offset += snprintf(list + offset, sizeof(list) - offset, "%s%s", players[i].name, players[i].in_game ? " (in game)\n" : "\n");
+                if (offset >= (int)sizeof(list)) break;
+            }
+            if (offset == 0) snprintf(list, sizeof(list), "No players online\n");
+            message_t out;
+            protocol_create_message(&out, MSG_PLAYER_LIST, "server", players[player_index].name, list);
+            protocol_send_message(players[player_index].sock, &out);
+        }
+            break;
+
+        case MSG_LIST_GAMES:
+        {
+            /* Return list of active sessions */
+            char list[BUF_SIZE];
+            session_list_games(list, sizeof(list));
+            message_t out;
+            protocol_create_message(&out, MSG_GAME_LIST, "server", players[player_index].name, list);
+            protocol_send_message(players[player_index].sock, &out);
+        }
             break;
             
         case MSG_CHALLENGE:
@@ -310,6 +333,32 @@ static void handle_client_message(int player_index)
         case MSG_CHAT:
             /* Handle chat message */
             break;
+
+        case MSG_SPECTATE:
+        {
+            /* Recipient should contain the session id to observe (as string). If empty, try data. */
+            int sid = -1;
+            if (msg.recipient[0] != '\0') sid = atoi(msg.recipient);
+            else if (msg.data[0] != '\0') sid = atoi(msg.data);
+
+            if (sid < 0) {
+                message_t error;
+                protocol_create_message(&error, MSG_ERROR, "server", players[player_index].name, "Invalid session id");
+                protocol_send_message(players[player_index].sock, &error);
+                break;
+            }
+
+            if (session_add_observer(sid, players[player_index].name, players[player_index].sock) == 0) {
+                message_t ok;
+                protocol_create_message(&ok, MSG_SPECTATE, "server", players[player_index].name, "Now observing session");
+                protocol_send_message(players[player_index].sock, &ok);
+            } else {
+                message_t error;
+                protocol_create_message(&error, MSG_ERROR, "server", players[player_index].name, "Failed to observe session");
+                protocol_send_message(players[player_index].sock, &error);
+            }
+        }
+            break;
             
         default:
             fprintf(stderr, "Unknown message type: %d\n", msg.type);
@@ -343,6 +392,12 @@ static void remove_player(int index)
         return;
     }
     
+    /* Remove the player as an observer from any sessions */
+    SOCKET sock = players[index].sock;
+    for (int i = 0; i < MAX_SESSIONS; i++) {
+        session_remove_observer(i, sock);
+    }
+
     /* Shift remaining players */
     for (int i = index; i < num_players - 1; i++) {
         players[i] = players[i + 1];

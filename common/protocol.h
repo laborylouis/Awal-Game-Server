@@ -9,6 +9,8 @@ typedef enum {
     MSG_LOGOUT,             /* Client disconnects */
     MSG_LIST_PLAYERS,       /* Request list of online players */
     MSG_PLAYER_LIST,        /* Server response with player list */
+    MSG_LIST_GAMES,         /* Request list of ongoing games (sessions) */
+    MSG_GAME_LIST,          /* Server response with games list */
     MSG_CHALLENGE,          /* Player A challenges player B */
     MSG_CHALLENGE_ACCEPT,   /* Player B accepts challenge */
     MSG_CHALLENGE_REFUSE,   /* Player B refuses challenge */
