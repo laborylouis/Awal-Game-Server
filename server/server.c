@@ -308,7 +308,20 @@ static void handle_client_message(int player_index)
             break;
             
         case MSG_CHAT:
-            /* Handle chat message */
+        {
+            player_t *target = find_player_by_name(msg.recipient);
+            if (target) {
+                message_t chat;
+                protocol_create_chat(&chat, msg.sender, msg.recipient, msg.data);
+                protocol_send_message(target->sock, &chat);
+            } else {
+                message_t chat;
+                protocol_create_chat(&chat, msg.sender, "", strcat(strcat(msg.recipient, " "), msg.data));
+                for (int i = 0; i < num_players; i++) {
+                    protocol_send_message(players[i].sock, &chat);
+                }
+            }
+        }
             break;
             
         default:

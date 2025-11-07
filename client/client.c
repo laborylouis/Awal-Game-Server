@@ -179,10 +179,20 @@ static void handle_user_input(void)
         protocol_send_message(server_sock, &msg);
     }
     else if (strncmp(input, "chat ", 5) == 0) {
-        /* Send chat message */
         message_t msg;
-        protocol_create_chat(&msg, username, "", input + 5);
-        protocol_send_message(server_sock, &msg);
+        char *rest = input + 5;
+        while (*rest == ' ') rest++;
+        char *space = strchr(rest, ' ');
+        if (space != NULL) {
+            size_t recip_len = space - rest;
+            char recip[64];
+            if (recip_len >= sizeof(recip)) recip_len = sizeof(recip) - 1;
+            strncpy(recip, rest, recip_len);
+            recip[recip_len] = '\0';
+            char *message_text = space + 1;
+            protocol_create_chat(&msg, username, recip, message_text);
+            protocol_send_message(server_sock, &msg);
+        }
     }
     else if (strcmp(input, "quit") == 0) {
         printf("Disconnecting...\n");
