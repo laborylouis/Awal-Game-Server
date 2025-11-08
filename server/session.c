@@ -5,6 +5,7 @@
 #include "../common/net.h"
 #include "../common/protocol.h"
 #include "../game/awale.h"
+#include "session.h"
 
 /* Game session structure */
 typedef struct {
@@ -14,9 +15,14 @@ typedef struct {
     SOCKET player1_sock;
     SOCKET player2_sock;
     awale_game_t *game;
+    /* Observers for this session */
+    int num_observers;
+    struct {
+        char name[64];
+        SOCKET sock;
+    } observers[10];
 } game_session_t;
 
-#define MAX_SESSIONS 50
 static game_session_t sessions[MAX_SESSIONS];
 
 /* Function prototypes */
@@ -36,6 +42,7 @@ void sessions_init(void)
     for (int i = 0; i < MAX_SESSIONS; i++) {
         sessions[i].active = 0;
         sessions[i].game = NULL;
+        sessions[i].num_observers = 0;
     }
 }
 
@@ -61,6 +68,7 @@ int session_create(const char *player1, SOCKET sock1, const char *player2, SOCKE
     sessions[slot].player1_sock = sock1;
     sessions[slot].player2_sock = sock2;
     sessions[slot].game = awale_create();
+    sessions[slot].num_observers = 0;
     
     /* Randomly decide who starts */
     sessions[slot].game->current_player = rand()%2;
@@ -103,6 +111,14 @@ void session_destroy(int session_id)
         awale_free(sessions[session_id].game);
         sessions[session_id].game = NULL;
     }
+    /* Notify and clear observers */
+    for (int i = 0; i < sessions[session_id].num_observers; i++) {
+        message_t msg;
+        protocol_create_message(&msg, MSG_GAME_OVER, "server", sessions[session_id].observers[i].name, "Observed game ended");
+        protocol_send_message(sessions[session_id].observers[i].sock, &msg);
+        /* do not close observer sockets here; clients manage their own connection */
+    }
+    sessions[session_id].num_observers = 0;
     
     sessions[session_id].active = 0;
     printf("Game session %d destroyed\n", session_id);
@@ -149,9 +165,6 @@ int session_handle_move(int session_id, const char *player_name, int hole)
         return -1;
     }
     
-    /* Move was successful, broadcast new state */
-    session_broadcast_state(session_id);
-    
     /* Check if game is over */
     if (awale_is_game_over(session->game)) {
         session_notify_game_over(session_id);
@@ -180,6 +193,11 @@ void session_broadcast_state(int session_id)
     protocol_create_message(&msg, MSG_GAME_STATE, "server", "", state_buffer);
     protocol_send_message(session->player1_sock, &msg);
     protocol_send_message(session->player2_sock, &msg);
+
+    /* Send to observers as well */
+    for (int i = 0; i < session->num_observers; i++) {
+        protocol_send_message(session->observers[i].sock, &msg);
+    }
 }
 
 void session_notify_game_over(int session_id)
@@ -208,6 +226,9 @@ void session_notify_game_over(int session_id)
     protocol_create_message(&msg, MSG_GAME_OVER, "server", "", result);
     protocol_send_message(session->player1_sock, &msg);
     protocol_send_message(session->player2_sock, &msg);
+    for (int i = 0; i < session->num_observers; i++) {
+        protocol_send_message(session->observers[i].sock, &msg);
+    }
     
     printf("%s\n", result);
 }
@@ -232,4 +253,56 @@ const char *session_get_opponent_name(int session_id, const char *player_name)
     }
 
     return NULL;
+}
+
+/* Add an observer to a session. Observer keeps its own connection; server just stores sock/name. */
+int session_add_observer(int session_id, const char *observer_name, SOCKET sock)
+{
+    if (session_id < 0 || session_id >= MAX_SESSIONS) return -1;
+    game_session_t *s = &sessions[session_id];
+    if (!s->active) return -1;
+    if (s->num_observers >= (int)(sizeof(s->observers)/sizeof(s->observers[0]))) return -1;
+
+    strncpy(s->observers[s->num_observers].name, observer_name ? observer_name : "", sizeof(s->observers[s->num_observers].name)-1);
+    s->observers[s->num_observers].sock = sock;
+    s->num_observers++;
+
+    /* Immediately send current state to new observer */
+    char state_buffer[BUF_SIZE];
+    awale_print_to_buffer(s->game, state_buffer, sizeof(state_buffer), s->player1_name, s->player2_name);
+    message_t msg;
+    protocol_create_message(&msg, MSG_GAME_STATE, "server", observer_name ? observer_name : "", state_buffer);
+    protocol_send_message(sock, &msg);
+    return 0;
+}
+
+int session_remove_observer(int session_id, SOCKET sock)
+{
+    if (session_id < 0 || session_id >= MAX_SESSIONS) return -1;
+    game_session_t *s = &sessions[session_id];
+    if (!s->active) return -1;
+
+    int idx = -1;
+    for (int i = 0; i < s->num_observers; i++) {
+        if (s->observers[i].sock == sock) { idx = i; break; }
+    }
+    if (idx == -1) return -1;
+    for (int i = idx; i < s->num_observers - 1; i++) {
+        s->observers[i] = s->observers[i+1];
+    }
+    s->num_observers--;
+    return 0;
+}
+
+/* Build a textual list of active sessions into provided buffer */
+void session_list_games(char *buffer, int size)
+{
+    int offset = 0;
+    for (int i = 0; i < MAX_SESSIONS; i++) {
+        if (sessions[i].active) {
+            offset += snprintf(buffer + offset, size - offset, "%d: %s vs %s\n", i, sessions[i].player1_name, sessions[i].player2_name);
+            if (offset >= size) break;
+        }
+    }
+    if (offset == 0) snprintf(buffer, size, "No active games\n");
 }

@@ -194,6 +194,22 @@ static void handle_user_input(void)
             protocol_send_message(server_sock, &msg);
         }
     }
+    else if (strcmp(input, "games") == 0) {
+        /* Request game session list */
+        message_t msg;
+        protocol_create_message(&msg, MSG_LIST_GAMES, username, "", "");
+        protocol_send_message(server_sock, &msg);
+    }
+    else if (strncmp(input, "spectate ", 8) == 0) {
+        /* Request to observe a game session */
+        int session_id = atoi(input + 8);
+        message_t msg;
+        char data[BUF_SIZE];
+        snprintf(data, sizeof(data), "%d", session_id);
+        protocol_create_message(&msg, MSG_SPECTATE, username, "", data);
+        protocol_send_message(server_sock, &msg);
+        printf("Requested to observe session %d\n", session_id);
+    }
     else if (strcmp(input, "quit") == 0) {
         printf("Disconnecting...\n");
         exit(0);
@@ -259,6 +275,14 @@ static void handle_server_message(void)
         case MSG_CHALLENGE_REFUSE:
             printf("%s\n", msg.data);
             break;
+
+        case MSG_GAME_LIST:
+            printf("Active game sessions:\n%s\n", msg.data);
+            break;
+
+        case MSG_SPECTATE:
+            printf("Now observing session\n");
+            break;
             
         default:
             printf("Received unknown message type: %d\n", msg.type);
@@ -276,6 +300,8 @@ static void print_help(void)
     printf("  refuse <name>     - Refuse a challenge\n");
     printf("  move <hole>       - Play a move (hole 0-5)\n");
     printf("  chat <message>    - Send a chat message\n");
+    printf("  games             - List active game sessions\n");
+    printf("  spectate <id>     - Observe a game session by id\n");
     printf("  quit              - Disconnect and exit\n");
     printf("\n");
 }

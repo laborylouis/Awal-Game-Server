@@ -44,7 +44,7 @@ void play_game() {
     
     while (!awale_is_game_over(game)) {
         // Display current state
-        awale_print(game);
+        awale_print(game, NULL, NULL);
         
         // Show whose turn it is
         printf("\n>>> Player %d's turn (", game->current_player);
@@ -128,7 +128,7 @@ void play_game() {
     // Game over - show results
     if (awale_is_game_over(game)) {
         printf("\n");
-        awale_print(game);
+        awale_print(game, NULL, NULL);
         printf("\n=== GAME OVER ===\n");
         printf("Player 0 score: %d\n", awale_get_score(game, 0));
         printf("Player 1 score: %d\n", awale_get_score(game, 1));
