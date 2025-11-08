@@ -33,7 +33,7 @@ static void handle_new_connection(SOCKET server_sock);
 static void handle_client_message(int player_index);
 static void broadcast_player_list(void);
 
-int main(int argc, char **argv)
+int main()
 {
     printf("=== Awale Game Server ===\n");
     printf("Initializing...\n");
@@ -317,6 +317,7 @@ static void handle_client_message(int player_index)
             session_handle_move(sid, player->name, atoi(msg.data));
             session_broadcast_state(sid);
 
+            // Check for game over
             if (session_find_by_player(player->name) == -1) {
                 if (player) { 
                     player->in_game = 0; 

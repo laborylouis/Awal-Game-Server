@@ -165,9 +165,6 @@ int session_handle_move(int session_id, const char *player_name, int hole)
         return -1;
     }
     
-    /* Move was successful, broadcast new state */
-    session_broadcast_state(session_id);
-    
     /* Check if game is over */
     if (awale_is_game_over(session->game)) {
         session_notify_game_over(session_id);
