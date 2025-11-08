@@ -21,7 +21,8 @@ typedef enum {
     MSG_GAME_OVER,          /* Game ended */
     MSG_CHAT,               /* Chat message */
     MSG_ERROR,              /* Error message */
-    MSG_BIO,                /* Player bio request/response */
+    MSG_BIO_VIEW,                /* Player bio request/response */
+    MSG_BIO_EDIT,
     MSG_SPECTATE            /* Request to spectate a game */
 } msg_type_t;
 

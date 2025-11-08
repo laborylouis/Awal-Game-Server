@@ -161,7 +161,6 @@ static void handle_user_input(void)
         protocol_send_message(server_sock, &msg);
     }
     else if (strncmp(input, "challenge ", 10) == 0) {
-        /* Challenge another player */
         char *opponent = input + 10;
         message_t msg;
         protocol_create_challenge(&msg, username, opponent);
@@ -224,6 +223,43 @@ static void handle_user_input(void)
         protocol_create_message(&msg, MSG_CHALLENGE_REFUSE, username, input +7, "");
         protocol_send_message(server_sock, &msg);
     }
+    else if(strncmp(input, "bio view ", 9) == 0){
+        message_t msg;
+        protocol_create_message(&msg, MSG_BIO_VIEW, username, input+9, "");
+        protocol_send_message(server_sock, &msg);
+    }
+    else if(strcmp(input, "bio edit") == 0){
+        printf("Write your bio now (up to 10 lines). Type '.done' on a line to finish early.\n");
+        char lines[10][BUF_SIZE];
+        int line_count = 0;
+        for (int i = 0; i < 10; i++) {
+            printf("%d> ", i+1);
+            fflush(stdout);
+            if (fgets(lines[i], sizeof(lines[i]), stdin) == NULL) {
+                break;
+            }
+            lines[i][strcspn(lines[i], "\n")] = '\0';
+            if (strcmp(lines[i], ".done") == 0) {
+                break;
+            }
+            line_count++;
+        }
+        char bio[BUF_SIZE];
+        bio[0] = '\0';
+        int bio_len = 0;
+        for (int i = 0; i < line_count; i++) {
+            int n = snprintf(bio + bio_len, sizeof(bio) - bio_len, "%s%s", lines[i], (i + 1 < line_count) ? "\n" : "");
+            if (n < 0 || n >= (int)(sizeof(bio) - bio_len)) {
+                bio[sizeof(bio) - 1] = '\0';
+                break;
+            }
+            bio_len += n;
+        }
+
+        message_t msg;
+        protocol_create_message(&msg, MSG_BIO_EDIT, username, "", bio);
+        protocol_send_message(server_sock, &msg);
+    }
     else {
         printf("Unknown command. Type 'help' for available commands.\n");
     }
@@ -284,6 +320,10 @@ static void handle_server_message(void)
             printf("Now observing session\n");
             break;
             
+        case MSG_BIO_VIEW:
+            printf("Bio of %s:\n%s\n", msg.sender, msg.data);
+            break;
+
         default:
             printf("Received unknown message type: %d\n", msg.type);
             break;
@@ -293,15 +333,17 @@ static void handle_server_message(void)
 static void print_help(void)
 {
     printf("\nAvailable commands:\n");
-    printf("  help              - Show this help message\n");
-    printf("  list              - List online players\n");
-    printf("  challenge <name>  - Challenge a player to a game\n");
-    printf("  accept <name>     - Accept a challenge\n");
-    printf("  refuse <name>     - Refuse a challenge\n");
-    printf("  move <hole>       - Play a move (hole 0-5)\n");
-    printf("  chat <message>    - Send a chat message\n");
-    printf("  games             - List active game sessions\n");
-    printf("  spectate <id>     - Observe a game session by id\n");
-    printf("  quit              - Disconnect and exit\n");
+    printf("  help                - Show this help message\n");
+    printf("  list                - List online players\n");
+    printf("  challenge <name>    - Challenge a player to a game\n");
+    printf("  accept <name>       - Accept a challenge\n");
+    printf("  refuse <name>       - Refuse a challenge\n");
+    printf("  move <hole>         - Play a move (hole 0-5)\n");
+    printf("  chat <message>      - Send a chat message\n");
+    printf("  games               - List active game sessions\n");
+    printf("  spectate <id>       - Observe a game session by id\n");
+    printf("  bio view <pseudo>   - View the bio of a player\n");
+    printf("  bio edit            - Edit your bio\n");
+    printf("  quit                - Disconnect and exit\n");
     printf("\n");
 }

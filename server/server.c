@@ -16,7 +16,8 @@ typedef struct {
     SOCKET sock;
     char name[64];
     int in_game;
-    int player_index; /* 0 or 1 in current game */
+    int player_index; 
+    char bio[BUF_SIZE];
 } player_t;
 
 static player_t players[MAX_PLAYERS];
@@ -191,7 +192,6 @@ static void handle_client_message(int player_index)
 
         case MSG_LIST_GAMES:
         {
-            /* Return list of active sessions */
             char list[BUF_SIZE];
             session_list_games(list, sizeof(list));
             message_t out;
@@ -202,11 +202,9 @@ static void handle_client_message(int player_index)
             
         case MSG_CHALLENGE:
             {
-                /* Find the opponent */
                 player_t *opponent = find_player_by_name(msg.recipient);
                 
                 if (!opponent) {
-                    /* Player not found */
                     message_t error;
                     protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Player not found");
                     protocol_send_message(players[player_index].sock, &error);
@@ -214,7 +212,6 @@ static void handle_client_message(int player_index)
                 }
                 
                 if (opponent->in_game) {
-                    /* Player already in a game */
                     message_t error;
                     protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Player is already in a game");
                     protocol_send_message(players[player_index].sock, &error);
@@ -222,14 +219,11 @@ static void handle_client_message(int player_index)
                 }
                 
                 if (players[player_index].in_game) {
-                    /* Challenger already in a game */
                     message_t error;
                     protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "You are already in a game");
                     protocol_send_message(players[player_index].sock, &error);
                     break;
                 }
-                
-                /* Forward challenge to opponent */
                 protocol_send_message(opponent->sock, &msg);
                 printf("%s challenges %s\n", msg.sender, msg.recipient);
             }
@@ -338,7 +332,8 @@ static void handle_client_message(int player_index)
                 message_t chat;
                 protocol_create_chat(&chat, msg.sender, msg.recipient, msg.data);
                 protocol_send_message(target->sock, &chat);
-            } else {
+            } 
+            else {
                 message_t chat;
                 protocol_create_chat(&chat, msg.sender, "", strcat(strcat(msg.recipient, " "), msg.data));
                 for (int i = 0; i < num_players; i++) {
@@ -373,10 +368,34 @@ static void handle_client_message(int player_index)
             }
         }
             break;
+
+        case MSG_BIO_VIEW:
+        {
+            player_t *player = find_player_by_name(msg.recipient);
+            if (!player) {
+                message_t error;
+                char reason[BUF_SIZE];
+                snprintf(reason, sizeof(reason), "%s is not a player !", msg.recipient);
+                protocol_create_message(&error, MSG_ERROR, "server", msg.sender, reason);
+                protocol_send_message(players[player_index].sock, &error);
+                break;
+            }
+            message_t bio;
+            protocol_create_message(&bio, MSG_BIO_VIEW, msg.recipient, msg.sender, player->bio);
+            protocol_send_message(players[player_index].sock, &bio);
+        }
+            break;
             
         default:
             fprintf(stderr, "Unknown message type: %d\n", msg.type);
             break;
+
+        case MSG_BIO_EDIT:
+        {
+            strncpy(players[player_index].bio, msg.data, sizeof(players[player_index].bio) - 1);
+            players[player_index].bio[sizeof(players[player_index].bio) - 1] = '\0';
+        }
+        break;
     }
 }
 
