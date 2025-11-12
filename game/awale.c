@@ -161,14 +161,7 @@ int awale_get_score(const awale_game_t *game, int player){
 void awale_print(const awale_game_t *game, const char *player0_name, const char *player1_name){
     if (!game) return;
 
-    printf("\n");
-    printf("           ");
-    for (int i = TOTAL_HOLES - 1; i >= HOLES_PER_PLAYER; i--) {
-        printf(" %2d  ", i);
-    }
-    printf("\n");
-
-        /* Build padded labels so columns stay aligned for variable-length names */
+    /* Build padded labels so columns stay aligned for variable-length names */
         const char *p0 = player0_name ? player0_name : "Player 0";
         const char *p1 = player1_name ? player1_name : "Player 1";
         char top_label[128];
@@ -229,12 +222,6 @@ void awale_print_to_buffer(const awale_game_t *game, char *buffer, int size,
     int offset = 0;
 
     offset += snprintf(buffer + offset, size - offset, "\n");
-    offset += snprintf(buffer + offset, size - offset, "           ");
-    for (int i = TOTAL_HOLES - 1; i >= HOLES_PER_PLAYER; i--) {
-        offset += snprintf(buffer + offset, size - offset, " %2d  ", i);
-    }
-    offset += snprintf(buffer + offset, size - offset, "\n");
-
     const char *p0 = player0_name ? player0_name : "Player 0";
     const char *p1 = player1_name ? player1_name : "Player 1";
     char top_label[128];
