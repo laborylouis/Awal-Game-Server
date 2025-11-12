@@ -32,7 +32,6 @@ static void remove_player(int index);
 static player_t* find_player_by_name(const char *name);
 static void handle_new_connection(SOCKET server_sock);
 static void handle_client_message(int player_index);
-static void broadcast_player_list(void);
 
 int main()
 {
@@ -147,7 +146,6 @@ static void handle_new_connection(SOCKET server_sock)
     if (msg.type == MSG_LOGIN) {
         if (add_player(client_sock, msg.sender) >= 0) {
             printf("Player '%s' logged in\n", msg.sender);
-            broadcast_player_list();
         } else {
             fprintf(stderr, "Failed to add player '%s'\n", msg.sender);
             net_close(client_sock);
@@ -167,7 +165,6 @@ static void handle_client_message(int player_index)
         printf("Player '%s' disconnected\n", players[player_index].name);
         net_close(players[player_index].sock);
         remove_player(player_index);
-        broadcast_player_list();
         return;
     }
     
@@ -375,7 +372,6 @@ static void handle_client_message(int player_index)
                 /* Clear player in_game flags for both participants */
                 if (player) { player->in_game = 0; player->player_index = -1; }
                 if (opponent) { opponent->in_game = 0; opponent->player_index = -1; }
-                broadcast_player_list();
             } else {
                 message_t error;
                 protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Failed to process give up");
