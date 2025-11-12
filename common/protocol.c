@@ -44,9 +44,11 @@ int protocol_recv_message(int sock, message_t *msg)
     return total_received;  /* Success - should equal msg_size */
 }
 
-void protocol_create_login(message_t *msg, const char *username)
+/* Create a login message. The password (if any) is placed in the data field. */
+void protocol_create_login(message_t *msg, const char *username, const char *password)
 {
-    protocol_create_message(msg, MSG_LOGIN, username, "", "");
+    /* Put the password (may be empty) into the data field. The server will hash it. */
+    protocol_create_message(msg, MSG_LOGIN, username, "", password ? password : "");
 }
 
 void protocol_create_challenge(message_t *msg, const char *from, const char *to)

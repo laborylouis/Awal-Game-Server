@@ -4,24 +4,52 @@
 #include <errno.h>
 #include <sys/select.h>
 #include <time.h>
+#include <openssl/md5.h>
 
 #include "../common/net.h"
 #include "../common/protocol.h"
 #include "../game/awale.h"
 #include "session.h"
 
-#define MAX_PLAYERS 100
+#define MAX_PLAYERS 100 // Maximum connected players
 
 typedef struct {
     SOCKET sock;
     char name[64];
     int in_game;
-    int player_index; 
+    int player_index; /* 0 or 1 in current game */
     char bio[BUF_SIZE];
 } player_t;
 
 static player_t players[MAX_PLAYERS];
 static int num_players = 0;
+
+/* ***** Account storage (persistent) ***** */
+/* Simple persistent account store kept in ACCOUNTS_FILE. Each line contains:
+         username:md5hash
+     When a client logs in it sends a clear-text password in the login message
+     data field; the server hashes it with MD5 and compares against the stored
+     hash. If the account does not exist it is created (registration on first
+     login). This is a minimal example for a classroom/demo project — do NOT
+     use MD5 or plaintext transmission for real passwords in production.
+*/
+/* Simple persistent account store (username:md5hash per line) */
+#define ACCOUNTS_FILE "accounts.db"
+#define MAX_ACCOUNTS 1000 // Maximum number of accounts stored
+typedef struct {
+    char name[64];
+    char hash[MD5_DIGEST_LENGTH*2 + 1];
+    char bio[BUF_SIZE];
+} account_t;
+static account_t accounts[MAX_ACCOUNTS];
+static int num_accounts = 0;
+
+static void load_accounts(void);
+static int find_account_index(const char *name);
+static int add_account(const char *name, const char *hash, const char *bio);
+static int save_accounts(void);
+static void escape_string(const char *in, char *out, int out_size);
+static void unescape_string(const char *in, char *out, int out_size);
 
 /* Function prototypes */
 static void init_server(void);
@@ -33,6 +61,120 @@ static player_t* find_player_by_name(const char *name);
 static void handle_new_connection(SOCKET server_sock);
 static void handle_client_message(int player_index);
 static void broadcast_player_list(void);
+
+// Password hashing function
+void hash_password(const char *password, char *hashed_password);
+
+/* Account store helpers */
+static void load_accounts(void)
+{
+    num_accounts = 0;
+    FILE *f = fopen(ACCOUNTS_FILE, "r");
+    if (!f) return;
+    char line[1024];
+    while (fgets(line, sizeof(line), f)) {
+        char *nl = strchr(line, '\n'); if (nl) *nl = '\0';
+        /* Format: name|hash|bio_escaped */
+        char *p1 = strchr(line, '|');
+        if (!p1) continue;
+        *p1 = '\0';
+        char *p2 = strchr(p1 + 1, '|');
+        if (!p2) continue;
+        *p2 = '\0';
+        char *name = line;
+        char *hash = p1 + 1;
+        char *bio_esc = p2 + 1;
+        if (num_accounts < MAX_ACCOUNTS) {
+            strncpy(accounts[num_accounts].name, name, sizeof(accounts[num_accounts].name)-1);
+            accounts[num_accounts].name[sizeof(accounts[num_accounts].name)-1] = '\0';
+            strncpy(accounts[num_accounts].hash, hash, sizeof(accounts[num_accounts].hash)-1);
+            accounts[num_accounts].hash[sizeof(accounts[num_accounts].hash)-1] = '\0';
+            /* Unescape bio */
+            unescape_string(bio_esc, accounts[num_accounts].bio, sizeof(accounts[num_accounts].bio));
+            num_accounts++;
+        }
+    }
+    fclose(f);
+}
+
+static int find_account_index(const char *name)
+{
+    for (int i = 0; i < num_accounts; i++) {
+        if (strcmp(accounts[i].name, name) == 0) return i;
+    }
+    return -1;
+}
+
+static int add_account(const char *name, const char *hash, const char *bio)
+{
+    if (num_accounts >= MAX_ACCOUNTS) return -1;
+    /* Append to file */
+    /* Add to in-memory list */
+    strncpy(accounts[num_accounts].name, name, sizeof(accounts[num_accounts].name)-1);
+    accounts[num_accounts].name[sizeof(accounts[num_accounts].name)-1] = '\0';
+    strncpy(accounts[num_accounts].hash, hash, sizeof(accounts[num_accounts].hash)-1);
+    accounts[num_accounts].hash[sizeof(accounts[num_accounts].hash)-1] = '\0';
+    if (bio) strncpy(accounts[num_accounts].bio, bio, sizeof(accounts[num_accounts].bio)-1);
+    else accounts[num_accounts].bio[0] = '\0';
+    accounts[num_accounts].bio[sizeof(accounts[num_accounts].bio)-1] = '\0';
+    num_accounts++;
+
+    /* Persist all accounts (append not reliable when editing bios) */
+    if (save_accounts() != 0) return -1;
+    return 0;
+}
+
+/* Save all accounts to ACCOUNTS_FILE using escaped bios */
+static int save_accounts(void)
+{
+    FILE *f = fopen(ACCOUNTS_FILE, "w");
+    if (!f) return -1;
+    char bio_esc[BUF_SIZE * 2];
+    for (int i = 0; i < num_accounts; i++) {
+        escape_string(accounts[i].bio, bio_esc, sizeof(bio_esc));
+        fprintf(f, "%s|%s|%s\n", accounts[i].name, accounts[i].hash, bio_esc);
+    }
+    fclose(f);
+    return 0;
+}
+
+/* Escape newline and pipe characters for safe storage in a single-line DB format */
+static void escape_string(const char *in, char *out, int out_size)
+{
+    int o = 0;
+    for (int i = 0; in[i] != '\0' && o + 1 < out_size; i++) {
+        if (in[i] == '\n') {
+            if (o + 2 >= out_size) break;
+            out[o++] = '\\'; out[o++] = 'n';
+        } else if (in[i] == '|') {
+            if (o + 2 >= out_size) break;
+            out[o++] = '\\'; out[o++] = '|';
+        } else if (in[i] == '\\') {
+            if (o + 2 >= out_size) break;
+            out[o++] = '\\'; out[o++] = '\\';
+        } else {
+            out[o++] = in[i];
+        }
+    }
+    out[o] = '\0';
+}
+
+static void unescape_string(const char *in, char *out, int out_size)
+{
+    int o = 0;
+    for (int i = 0; in[i] != '\0' && o + 1 < out_size; i++) {
+        if (in[i] == '\\' && in[i+1] != '\0') {
+            i++;
+            if (in[i] == 'n') out[o++] = '\n';
+            else if (in[i] == '|') out[o++] = '|';
+            else if (in[i] == '\\') out[o++] = '\\';
+            else out[o++] = in[i];
+        } else {
+            out[o++] = in[i];
+        }
+    }
+    out[o] = '\0';
+}
 
 int main()
 {
@@ -50,6 +192,7 @@ static void init_server(void)
 {
     net_init();
     sessions_init();
+    load_accounts();
     /* Seed RNG once at startup so rand() produces varied results */
     srand((unsigned)time(NULL));
     memset(players, 0, sizeof(players));
@@ -145,12 +288,57 @@ static void handle_new_connection(SOCKET server_sock)
     }
     
     if (msg.type == MSG_LOGIN) {
-        if (add_player(client_sock, msg.sender) >= 0) {
-            printf("Player '%s' logged in\n", msg.sender);
-            broadcast_player_list();
+        /* msg.sender = username, msg.data = password (plain). Server hashes and verifies or registers account. */
+        const char *username = msg.sender;
+        const char *password = msg.data;
+        char hashed[MD5_DIGEST_LENGTH*2 + 1];
+        hash_password(password ? password : "", hashed);
+
+        int acc = find_account_index(username);
+        if (acc >= 0) {
+            /* Account exists: verify password */
+            if (strcmp(accounts[acc].hash, hashed) != 0) {
+                message_t err;
+                protocol_create_message(&err, MSG_ERROR, "server", username, "Invalid password");
+                protocol_send_message(client_sock, &err);
+                net_close(client_sock);
+            } else {
+                /* Password OK. Ensure user not already online */
+                if (find_player_by_name(username) != NULL) {
+                    message_t err;
+                    protocol_create_message(&err, MSG_ERROR, "server", username, "User already online");
+                    protocol_send_message(client_sock, &err);
+                    net_close(client_sock);
+                } else {
+                    int idx = add_player(client_sock, username);
+                    if (idx >= 0) {
+                        printf("Player '%s' logged in\n", username);
+                    } else {
+                        message_t err;
+                        protocol_create_message(&err, MSG_ERROR, "server", username, "Failed to add player");
+                        protocol_send_message(client_sock, &err);
+                        net_close(client_sock);
+                    }
+                }
+            }
         } else {
-            fprintf(stderr, "Failed to add player '%s'\n", msg.sender);
-            net_close(client_sock);
+            /* New account: register and add player */
+            if (add_account(username, hashed, "") != 0) {
+                message_t err;
+                protocol_create_message(&err, MSG_ERROR, "server", username, "Failed to register account");
+                protocol_send_message(client_sock, &err);
+                net_close(client_sock);
+            } else {
+                int idx = add_player(client_sock, username);
+                if (idx >= 0) {
+                    printf("Registered and logged in new player '%s'\n", username);
+                } else {
+                    message_t err;
+                    protocol_create_message(&err, MSG_ERROR, "server", username, "Failed to add player");
+                    protocol_send_message(client_sock, &err);
+                    net_close(client_sock);
+                }
+            }
         }
     } else {
         fprintf(stderr, "Expected login message\n");
@@ -192,6 +380,7 @@ static void handle_client_message(int player_index)
 
         case MSG_LIST_GAMES:
         {
+            /* Return list of active sessions */
             char list[BUF_SIZE];
             session_list_games(list, sizeof(list));
             message_t out;
@@ -202,9 +391,11 @@ static void handle_client_message(int player_index)
             
         case MSG_CHALLENGE:
             {
+                /* Find the opponent */
                 player_t *opponent = find_player_by_name(msg.recipient);
                 
                 if (!opponent) {
+                    /* Player not found */
                     message_t error;
                     protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Player not found");
                     protocol_send_message(players[player_index].sock, &error);
@@ -212,6 +403,7 @@ static void handle_client_message(int player_index)
                 }
                 
                 if (opponent->in_game) {
+                    /* Player already in a game */
                     message_t error;
                     protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Player is already in a game");
                     protocol_send_message(players[player_index].sock, &error);
@@ -219,11 +411,14 @@ static void handle_client_message(int player_index)
                 }
                 
                 if (players[player_index].in_game) {
+                    /* Challenger already in a game */
                     message_t error;
                     protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "You are already in a game");
                     protocol_send_message(players[player_index].sock, &error);
                     break;
                 }
+                
+                /* Forward challenge to opponent */
                 protocol_send_message(opponent->sock, &msg);
                 printf("%s challenges %s\n", msg.sender, msg.recipient);
             }
@@ -329,15 +524,35 @@ static void handle_client_message(int player_index)
         {
             player_t *target = find_player_by_name(msg.recipient);
             if (target) {
+                // private chat
                 message_t chat;
                 protocol_create_chat(&chat, msg.sender, msg.recipient, msg.data);
                 protocol_send_message(target->sock, &chat);
-            } 
+            }
             else {
+                // session chat
+                // if the sender is not in a game send an error
+                player_t *sender = find_player_by_name(msg.sender);
+                if (!sender->in_game) {
+                    message_t error;
+                    protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "You must be in a game to send session chat! Type 'help' for more info.");
+                    protocol_send_message(players[player_index].sock, &error);
+                    break;
+                }
                 message_t chat;
                 protocol_create_chat(&chat, msg.sender, "", strcat(strcat(msg.recipient, " "), msg.data));
-                for (int i = 0; i < num_players; i++) {
-                    protocol_send_message(players[i].sock, &chat);
+
+                int sid = session_find_by_player(sender->name);
+                if (sid < 0) {
+                    message_t error;
+                    protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "No active session");
+                    protocol_send_message(sender->sock, &error);
+                    break;
+                }
+                const char *opponent_name = session_get_opponent_name(sid, sender->name);
+                player_t *opponent = find_player_by_name(opponent_name);
+                if (opponent) {
+                    protocol_send_message(opponent->sock, &chat);
                 }
             }
         }
@@ -392,8 +607,16 @@ static void handle_client_message(int player_index)
 
         case MSG_BIO_EDIT:
         {
+            /* Update in-memory player bio and persist to account store if exists */
             strncpy(players[player_index].bio, msg.data, sizeof(players[player_index].bio) - 1);
             players[player_index].bio[sizeof(players[player_index].bio) - 1] = '\0';
+            int acc = find_account_index(players[player_index].name);
+            if (acc >= 0) {
+                /* Update account bio and save */
+                strncpy(accounts[acc].bio, players[player_index].bio, sizeof(accounts[acc].bio) - 1);
+                accounts[acc].bio[sizeof(accounts[acc].bio) - 1] = '\0';
+                save_accounts();
+            }
         }
         break;
     }
@@ -405,7 +628,7 @@ static int add_player(SOCKET sock, const char *name)
         return -1;
     }
     
-    /* Check for duplicate name */
+    /* Check for duplicate name (already online) */
     if (find_player_by_name(name) != NULL) {
         return -1;
     }
@@ -414,6 +637,15 @@ static int add_player(SOCKET sock, const char *name)
     strncpy(players[num_players].name, name, sizeof(players[num_players].name) - 1);
     players[num_players].in_game = 0;
     players[num_players].player_index = -1;
+    /* Copy bio from account store if available */
+    int acc = find_account_index(name);
+    if (acc >= 0) {
+        printf("Loading bio for player '%s'\n", name);
+        strncpy(players[num_players].bio, accounts[acc].bio, sizeof(players[num_players].bio) - 1);
+        players[num_players].bio[sizeof(players[num_players].bio) - 1] = '\0';
+    } else {
+        players[num_players].bio[0] = '\0';
+    }
     
     num_players++;
     return num_players - 1;
@@ -452,4 +684,26 @@ static player_t* find_player_by_name(const char *name)
 static void broadcast_player_list(void)
 {
     /* Format player names into a message and broadcast */
+    char list[BUF_SIZE];
+    int offset = 0;
+    for (int i = 0; i < num_players; i++) {
+        offset += snprintf(list + offset, sizeof(list) - offset, "%s%s", players[i].name, players[i].in_game ? " (in game)\n" : "\n");
+        if (offset >= (int)sizeof(list)) break;
+    }
+    if (offset == 0) snprintf(list, sizeof(list), "No players online\n");
+
+    message_t out;
+    protocol_create_message(&out, MSG_PLAYER_LIST, "server", "", list);
+    for (int i = 0; i < num_players; i++) {
+        protocol_send_message(players[i].sock, &out);
+    }
+}
+
+void hash_password(const char *password, char *hashed_password) {
+    unsigned char digest[MD5_DIGEST_LENGTH];
+    MD5((unsigned char*)password, strlen(password), digest);
+
+    for (int i = 0; i < MD5_DIGEST_LENGTH; i++) {
+        sprintf(&hashed_password[i*2], "%02x", (unsigned int)digest[i]);
+    }
 }
