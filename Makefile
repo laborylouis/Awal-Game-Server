@@ -2,7 +2,7 @@
 
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -g
-LDFLAGS = -lcrypto
+LDFLAGS = 
 
 # Directories
 COMMON_DIR = common

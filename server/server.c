@@ -4,7 +4,6 @@
 #include <errno.h>
 #include <sys/select.h>
 #include <time.h>
-#include <openssl/md5.h>
 
 #include "../common/net.h"
 #include "../common/protocol.h"
@@ -25,20 +24,13 @@ static player_t players[MAX_PLAYERS];
 static int num_players = 0;
 
 /* ***** Account storage (persistent) ***** */
-/* Simple persistent account store kept in ACCOUNTS_FILE. Each line contains:
-         username:md5hash
-     When a client logs in it sends a clear-text password in the login message
-     data field; the server hashes it with MD5 and compares against the stored
-     hash. If the account does not exist it is created (registration on first
-     login). This is a minimal example for a classroom/demo project — do NOT
-     use MD5 or plaintext transmission for real passwords in production.
-*/
-/* Simple persistent account store (username:md5hash per line) */
+
 #define ACCOUNTS_FILE "accounts.db"
 #define MAX_ACCOUNTS 1000 // Maximum number of accounts stored
+#define MAX_PASSWORD_HASH_LENGTH 65 // Length for password hash strings
 typedef struct {
     char name[64];
-    char hash[MD5_DIGEST_LENGTH*2 + 1];
+    char hash[MAX_PASSWORD_HASH_LENGTH];
     char bio[BUF_SIZE];
 } account_t;
 static account_t accounts[MAX_ACCOUNTS];
@@ -290,13 +282,11 @@ static void handle_new_connection(SOCKET server_sock)
         /* msg.sender = username, msg.data = password (plain). Server hashes and verifies or registers account. */
         const char *username = msg.sender;
         const char *password = msg.data;
-        char hashed[MD5_DIGEST_LENGTH*2 + 1];
-        hash_password(password ? password : "", hashed);
 
         int acc = find_account_index(username);
         if (acc >= 0) {
             /* Account exists: verify password */
-            if (strcmp(accounts[acc].hash, hashed) != 0) {
+            if (strcmp(accounts[acc].hash, password) != 0) {
                 message_t err;
                 protocol_create_message(&err, MSG_ERROR, "server", username, "Invalid password");
                 protocol_send_message(client_sock, &err);
@@ -322,7 +312,7 @@ static void handle_new_connection(SOCKET server_sock)
             }
         } else {
             /* New account: register and add player */
-            if (add_account(username, hashed, "") != 0) {
+            if (add_account(username, password, "") != 0) {
                 message_t err;
                 protocol_create_message(&err, MSG_ERROR, "server", username, "Failed to register account");
                 protocol_send_message(client_sock, &err);
@@ -739,11 +729,12 @@ static player_t* find_player_by_name(const char *name)
     return NULL;
 }
 
-void hash_password(const char *password, char *hashed_password) {
-    unsigned char digest[MD5_DIGEST_LENGTH];
-    MD5((unsigned char*)password, strlen(password), digest);
+// void hash_password(const char *password, char *hashed_password) {
+//     unsigned char digest[MD5_DIGEST_LENGTH];
+    
+//     MD5((unsigned char*)password, strlen(password), digest);
 
-    for (int i = 0; i < MD5_DIGEST_LENGTH; i++) {
-        sprintf(&hashed_password[i*2], "%02x", (unsigned int)digest[i]);
-    }
-}
+//     for (int i = 0; i < MD5_DIGEST_LENGTH; i++) {
+//         sprintf(&hashed_password[i*2], "%02x", (unsigned int)digest[i]);
+//     }
+// }

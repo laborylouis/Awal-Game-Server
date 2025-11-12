@@ -133,13 +133,13 @@ static void run_client_loop(void)
         
         /* Handle user input */
         if (FD_ISSET(STDIN_FILENO, &readfds)) {
+            printf("\nType 'help' for available commands\n\n");
             handle_user_input();
         }
         
         /* Handle server messages */
         if (FD_ISSET(server_sock, &readfds)) {
             handle_server_message();
-            printf("\nType 'help' for available commands\n\n");
         }
     }
 }
