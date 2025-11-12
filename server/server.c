@@ -18,6 +18,7 @@ typedef struct {
     int in_game;
     int player_index; /* 0 or 1 in current game */
     char bio[BUF_SIZE];
+    int private_mode; /* 1 = private (only friends can spectate), 0 = public */
 } player_t;
 
 static player_t players[MAX_PLAYERS];
@@ -864,16 +865,98 @@ static void handle_client_message(int player_index)
                 protocol_send_message(players[player_index].sock, &error);
                 break;
             }
+            /* Privacy checks: retrieve the two players in the session and verify their private flags.
+             * If none are private -> allowed. If some are private, the spectator must be friend with at
+             * least one private player. */
+            char p1[64], p2[64];
+            if (session_get_players(sid, p1, sizeof(p1), p2, sizeof(p2)) != 0) {
+                message_t error;
+                protocol_create_message(&error, MSG_ERROR, "server", players[player_index].name, "Invalid session id");
+                protocol_send_message(players[player_index].sock, &error);
+                break;
+            }
 
+            player_t *player_a = find_player_by_name(p1);
+            player_t *player_b = find_player_by_name(p2);
+
+            int private_a = player_a ? player_a->private_mode : 0;
+            int private_b = player_b ? player_b->private_mode : 0;
+
+            int acc_spectator = find_account_index(players[player_index].name);
+            int allowed = 0;
+
+            if (!private_a && !private_b) {
+                allowed = 1; /* public game */
+            } else {
+                /* If either side is private, spectator must be friend with at least one private player */
+                if (acc_spectator >= 0) {
+                    if (private_a) {
+                        int acc_a = find_account_index(p1);
+                        if (acc_a >= 0 && account_has_friend_idx(acc_a, acc_spectator)) allowed = 1;
+                    }
+                    if (!allowed && private_b) {
+                        int acc_b = find_account_index(p2);
+                        if (acc_b >= 0 && account_has_friend_idx(acc_b, acc_spectator)) allowed = 1;
+                    }
+                }
+            }
+
+            if (!allowed) {
+                message_t error;
+                protocol_create_message(&error, MSG_ERROR, "server", players[player_index].name, "Cannot spectate: one or more players set their game to private");
+                protocol_send_message(players[player_index].sock, &error);
+                break;
+            }
+
+            /* Allowed -> add observer and notify */
             if (session_add_observer(sid, players[player_index].name, players[player_index].sock) == 0) {
                 message_t ok;
                 protocol_create_message(&ok, MSG_SPECTATE, "server", players[player_index].name, "Now observing session");
                 protocol_send_message(players[player_index].sock, &ok);
+
+                /* Server terminal notice */
+                printf("%s is now spectating session %d (%s vs %s)\n", players[player_index].name, sid, p1, p2);
+
+                /* Notify the two players in the game that someone is observing */
+                char notice[BUF_SIZE];
+                snprintf(notice, sizeof(notice), "%s is observing your game", players[player_index].name);
+                message_t nmsg;
+                protocol_create_message(&nmsg, MSG_CHAT, "server", p1, notice);
+                if (player_a) protocol_send_message(player_a->sock, &nmsg);
+                protocol_create_message(&nmsg, MSG_CHAT, "server", p2, notice);
+                if (player_b) protocol_send_message(player_b->sock, &nmsg);
             } else {
                 message_t error;
                 protocol_create_message(&error, MSG_ERROR, "server", players[player_index].name, "Failed to observe session");
                 protocol_send_message(players[player_index].sock, &error);
             }
+        }
+            break;
+
+        case MSG_SET_PRIVATE:
+        {
+            /* msg.data: "1" to enable, "0" to disable, or "toggle" to flip */
+            int newval = -1;
+            if (strcmp(msg.data, "toggle") == 0) {
+                players[player_index].private_mode = !players[player_index].private_mode;
+                newval = players[player_index].private_mode;
+            } else if (msg.data[0] == '1') {
+                players[player_index].private_mode = 1;
+                newval = 1;
+            } else if (msg.data[0] == '0') {
+                players[player_index].private_mode = 0;
+                newval = 0;
+            }
+
+            message_t out;
+            if (newval == 1) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", players[player_index].name, "Private mode enabled");
+            } else if (newval == 0) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", players[player_index].name, "Private mode disabled");
+            } else {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", players[player_index].name, "Unknown parameter for private command (use '1','0' or 'toggle')");
+            }
+            protocol_send_message(players[player_index].sock, &out);
         }
             break;
 
@@ -931,6 +1014,7 @@ static int add_player(SOCKET sock, const char *name)
     strncpy(players[num_players].name, name, sizeof(players[num_players].name) - 1);
     players[num_players].in_game = 0;
     players[num_players].player_index = -1;
+    players[num_players].private_mode = 0;
     /* Copy bio from account store if available */
     int acc = find_account_index(name);
     if (acc >= 0) {

@@ -213,6 +213,13 @@ static void handle_user_input(void)
         protocol_create_message(&msg, MSG_LIST_GAMES, username, "", "");
         protocol_send_message(server_sock, &msg);
     }
+    else if (strcmp(input, "private") == 0) {
+        /* Toggle private mode */
+        message_t msg;
+        /* Toggle on server by sending data "toggle"; server will flip the flag for this player */
+        protocol_create_message(&msg, MSG_SET_PRIVATE, username, "", "toggle");
+        protocol_send_message(server_sock, &msg);
+    }
     else if (strncmp(input, "spectate ", 8) == 0) {
         /* Request to observe a game session */
         int session_id = atoi(input + 8);
@@ -410,6 +417,7 @@ static void print_help(void)
     printf("  chat <player> <msg> - Send a private chat message\n");
     printf("  games               - List active game sessions\n");
     printf("  spectate <id>       - Observe a game session by id\n");
+    printf("  private             - Toggle private mode (only friends can spectate your games)\n");
     printf("  bio view <pseudo>   - View the bio of a player\n");
     printf("  bio edit            - Edit your bio\n");
     printf("  give up             - Give up a game\n");

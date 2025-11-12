@@ -255,6 +255,22 @@ const char *session_get_opponent_name(int session_id, const char *player_name)
     return NULL;
 }
 
+int session_get_players(int session_id, char *p1, int p1_size, char *p2, int p2_size)
+{
+    if (session_id < 0 || session_id >= MAX_SESSIONS) return -1;
+    game_session_t *session = &sessions[session_id];
+    if (!session->active) return -1;
+    if (p1 && p1_size > 0) {
+        strncpy(p1, session->player1_name, p1_size - 1);
+        p1[p1_size - 1] = '\0';
+    }
+    if (p2 && p2_size > 0) {
+        strncpy(p2, session->player2_name, p2_size - 1);
+        p2[p2_size - 1] = '\0';
+    }
+    return 0;
+}
+
 /* Add an observer to a session. Observer keeps its own connection; server just stores sock/name. */
 int session_add_observer(int session_id, const char *observer_name, SOCKET sock)
 {

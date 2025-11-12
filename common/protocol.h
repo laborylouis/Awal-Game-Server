@@ -33,6 +33,7 @@ typedef enum {
     MSG_BIO_VIEW,           /* Player bio request/response */
     MSG_BIO_EDIT,
     MSG_SPECTATE,           /* Request to spectate a game */
+    MSG_SET_PRIVATE,         /* Client -> server: set private mode (data="1" or "0") */
     MSG_GIVE_UP             /* Player gives up the game */
 } msg_type_t;
 
