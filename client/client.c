@@ -68,6 +68,13 @@ int main(int argc, char **argv)
         cleanup_client();
         return EXIT_FAILURE;
     }
+
+    // refuse username with a space
+    if (strchr(username, ' ') != NULL) {
+        fprintf(stderr, "Username cannot contain spaces\n");
+        cleanup_client();
+        return EXIT_FAILURE;
+    }
     
     char password[128];
     printf("Enter password: ");
