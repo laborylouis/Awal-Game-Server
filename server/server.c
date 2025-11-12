@@ -17,6 +17,7 @@ typedef struct {
     char name[64];
     int in_game;
     int player_index; /* 0 or 1 in current game */
+    char pending_challenger[64]; /* name of player who last challenged this player */
     char bio[BUF_SIZE];
 } player_t;
 
@@ -438,6 +439,9 @@ static void handle_client_message(int player_index)
                     break;
                 }
                 
+                /* Record pending challenger on the opponent so they can only accept if challenged */
+                strncpy(opponent->pending_challenger, msg.sender, sizeof(opponent->pending_challenger)-1);
+                opponent->pending_challenger[sizeof(opponent->pending_challenger)-1] = '\0';
                 /* Forward challenge to opponent */
                 protocol_send_message(opponent->sock, &msg);
                 printf("%s challenges %s\n", msg.sender, msg.recipient);
@@ -452,6 +456,13 @@ static void handle_client_message(int player_index)
                 message_t error;
                 protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Challenger not found");
                 protocol_send_message(players[player_index].sock, &error);
+                break;
+            }
+            /* Ensure the acceptor was actually challenged by this challenger */
+            if (strcmp(acceptor->pending_challenger, challenger->name) != 0) {
+                message_t error;
+                protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "No pending challenge from this player");
+                protocol_send_message(acceptor->sock, &error);
                 break;
             }
             if (challenger->in_game) {
@@ -481,6 +492,10 @@ static void handle_client_message(int player_index)
             acceptor->player_index = 1;
             challenger->player_index = 0;
 
+            /* Clear pending challenger entries for both players */
+            acceptor->pending_challenger[0] = '\0';
+            challenger->pending_challenger[0] = '\0';
+
             printf("%s accepted challenge from %s, session %d created\n", acceptor->name, challenger->name, session_slot);
         }
             break;
@@ -493,6 +508,12 @@ static void handle_client_message(int player_index)
                 protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Challenger not found");
                 protocol_send_message(players[player_index].sock, &error);
                 break;
+            }
+
+            /* Clear any pending challenge targeting this acceptor (the player who refused) */
+            player_t *refuser = &players[player_index];
+            if (strcmp(refuser->pending_challenger, challenger->name) == 0) {
+                refuser->pending_challenger[0] = '\0';
             }
 
             message_t refuse_msg;
@@ -713,6 +734,7 @@ static int add_player(SOCKET sock, const char *name)
     strncpy(players[num_players].name, name, sizeof(players[num_players].name) - 1);
     players[num_players].in_game = 0;
     players[num_players].player_index = -1;
+    players[num_players].pending_challenger[0] = '\0';
     /* Copy bio from account store if available */
     int acc = find_account_index(name);
     if (acc >= 0) {
