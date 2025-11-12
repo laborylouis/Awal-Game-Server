@@ -208,6 +208,13 @@ static void handle_client_message(int player_index)
                     break;
                 }
                 
+                if (opponent == &(players[player_index])) {
+                    message_t error;
+                    protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "You can't challenge yourself !");
+                    protocol_send_message(players[player_index].sock, &error);
+                    break;
+                }
+
                 if (opponent->in_game) {
                     message_t error;
                     protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Player is already in a game");

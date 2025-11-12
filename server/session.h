@@ -14,7 +14,6 @@ void session_broadcast_state(int session_id);
 void session_notify_game_over(int session_id);
 const char *session_get_opponent_name(int session_id, const char *player_name);
 int session_give_up(int session_id, const char *player_name);
-/* Observers and listing */
 int session_add_observer(int session_id, const char *observer_name, SOCKET sock);
 int session_remove_observer(int session_id, SOCKET sock);
 void session_list_games(char *buffer, int size);
