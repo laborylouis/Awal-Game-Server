@@ -306,3 +306,40 @@ void session_list_games(char *buffer, int size)
     }
     if (offset == 0) snprintf(buffer, size, "No active games\n");
 }
+
+/* Handle a player giving up: mark opponent as winner, collect remaining seeds, notify and destroy session */
+int session_give_up(int session_id, const char *player_name)
+{
+    if (session_id < 0 || session_id >= MAX_SESSIONS || !sessions[session_id].active) return -1;
+    game_session_t *session = &sessions[session_id];
+
+    int player_num;
+    if (strcmp(player_name, session->player1_name) == 0) player_num = 0;
+    else if (strcmp(player_name, session->player2_name) == 0) player_num = 1;
+    else return -1;
+
+    int opponent = 1 - player_num;
+
+    /* Collect remaining seeds to opponent and clear holes */
+    int opp_start = opponent * HOLES_PER_PLAYER;
+    int opp_end = opp_start + HOLES_PER_PLAYER;
+    for (int i = 0; i < TOTAL_HOLES; i++) {
+        if (i >= opp_start && i < opp_end) {
+            session->game->scores[opponent] += session->game->holes[i];
+        } else {
+            /* leave other side's seeds as is or add to opponent as well */
+            /* we'll also collect them to opponent to finalize the score */
+            session->game->scores[opponent] += session->game->holes[i];
+        }
+        session->game->holes[i] = 0;
+    }
+
+    session->game->game_over = 1;
+    session->game->winner = opponent;
+
+    /* Notify and cleanup */
+    session_notify_game_over(session_id);
+    session_destroy(session_id);
+
+    return 0;
+}

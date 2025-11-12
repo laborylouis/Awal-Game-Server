@@ -275,6 +275,11 @@ static void handle_user_input(void)
         protocol_create_message(&msg, MSG_BIO_EDIT, username, "", bio);
         protocol_send_message(server_sock, &msg);
     }
+    else if (strcmp(input,"give up") == 0){
+        message_t msg;
+        protocol_create_message(&msg, MSG_GIVE_UP, username, "", "");
+        protocol_send_message(server_sock, &msg);
+    }
     else {
         printf("Unknown command. Type 'help' for available commands.\n");
     }
@@ -290,7 +295,6 @@ static void handle_server_message(void)
         exit(0);
     }
     
-    /* Handle different message types */
     switch (msg.type) {
         case MSG_GAME_START:
             printf("\n=== Game starting against %s ===\n", msg.data);
@@ -360,6 +364,7 @@ static void print_help(void)
     printf("  spectate <id>       - Observe a game session by id\n");
     printf("  bio view <pseudo>   - View the bio of a player\n");
     printf("  bio edit            - Edit your bio\n");
+    printf("  give up             - Give up a game\n");
     printf("  quit                - Disconnect and exit\n");
     printf("\n");
 }
