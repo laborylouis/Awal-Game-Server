@@ -23,7 +23,8 @@ typedef enum {
     MSG_ERROR,              /* Error message */
     MSG_BIO_VIEW,                /* Player bio request/response */
     MSG_BIO_EDIT,
-    MSG_SPECTATE            /* Request to spectate a game */
+    MSG_SPECTATE,            /* Request to spectate a game */
+    MSG_GIVE_UP
 } msg_type_t;
 
 /* Protocol message structure */

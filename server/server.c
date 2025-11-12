@@ -164,7 +164,6 @@ static void handle_client_message(int player_index)
     int result = protocol_recv_message(players[player_index].sock, &msg);
     
     if (result <= 0) {
-        /* Client disconnected */
         printf("Player '%s' disconnected\n", players[player_index].name);
         net_close(players[player_index].sock);
         remove_player(player_index);
@@ -172,11 +171,9 @@ static void handle_client_message(int player_index)
         return;
     }
     
-    /* Handle different message types */
     switch (msg.type) {
         case MSG_LIST_PLAYERS:
         {
-            /* Build list of online players and send to requester */
             char list[BUF_SIZE];
             int offset = 0;
             for (int i = 0; i < num_players; i++) {
@@ -324,6 +321,48 @@ static void handle_client_message(int player_index)
             }
         }
             break;
+
+        case MSG_GIVE_UP:
+        {
+            /* Player wants to give up: find player and session, then handle give up */
+            player_t *player = find_player_by_name(msg.sender);
+            if (!player) {
+                message_t error;
+                protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Player not found");
+                protocol_send_message(players[player_index].sock, &error);
+                break;
+            }
+            if (!player->in_game) {
+                message_t error;
+                protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "You are not in a game");
+                protocol_send_message(player->sock, &error);
+                break;
+            }
+            int sid = session_find_by_player(player->name);
+            if (sid < 0) {
+                message_t error;
+                protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "No active session");
+                protocol_send_message(player->sock, &error);
+                break;
+            }
+
+            /* Determine opponent name before session is destroyed */
+            const char *opponent_name = session_get_opponent_name(sid, player->name);
+            player_t *opponent = opponent_name ? find_player_by_name(opponent_name) : NULL;
+
+            /* Perform give up inside session module */
+            if (session_give_up(sid, player->name) == 0) {
+                /* Clear player in_game flags for both participants */
+                if (player) { player->in_game = 0; player->player_index = -1; }
+                if (opponent) { opponent->in_game = 0; opponent->player_index = -1; }
+                broadcast_player_list();
+            } else {
+                message_t error;
+                protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Failed to process give up");
+                protocol_send_message(player->sock, &error);
+            }
+        }
+            break;
             
         case MSG_CHAT:
         {
@@ -385,17 +424,18 @@ static void handle_client_message(int player_index)
             protocol_send_message(players[player_index].sock, &bio);
         }
             break;
-            
-        default:
-            fprintf(stderr, "Unknown message type: %d\n", msg.type);
-            break;
 
         case MSG_BIO_EDIT:
         {
             strncpy(players[player_index].bio, msg.data, sizeof(players[player_index].bio) - 1);
             players[player_index].bio[sizeof(players[player_index].bio) - 1] = '\0';
         }
-        break;
+            break;
+        
+
+        default:
+            fprintf(stderr, "Unknown message type: %d\n", msg.type);
+            break;
     }
 }
 
