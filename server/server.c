@@ -729,12 +729,3 @@ static player_t* find_player_by_name(const char *name)
     return NULL;
 }
 
-// void hash_password(const char *password, char *hashed_password) {
-//     unsigned char digest[MD5_DIGEST_LENGTH];
-    
-//     MD5((unsigned char*)password, strlen(password), digest);
-
-//     for (int i = 0; i < MD5_DIGEST_LENGTH; i++) {
-//         sprintf(&hashed_password[i*2], "%02x", (unsigned int)digest[i]);
-//     }
-// }

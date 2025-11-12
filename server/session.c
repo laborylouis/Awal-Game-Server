@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "../common/net.h"
 #include "../common/protocol.h"
@@ -21,9 +22,68 @@ typedef struct {
         char name[64];
         SOCKET sock;
     } observers[10];
+    /* simple move history for saving games */
+    int move_count;
+    struct {
+        char player[64];
+        int hole; /* -1 = give up */
+        time_t when;
+    } moves[1024];
+    time_t start_time;
 } game_session_t;
 
 static game_session_t sessions[MAX_SESSIONS];
+
+/* Save session to a simple text .awale file in ./saved_games */
+static int session_save_game(int session_id)
+{
+    if (session_id < 0 || session_id >= MAX_SESSIONS) return -1;
+    game_session_t *s = &sessions[session_id];
+    if (!s->active || !s->game) return -1;
+
+    /* sanitize simple filename */
+    char p1[128] = {0}, p2[128] = {0};
+    for (size_t i = 0; i < sizeof(p1)-1 && s->player1_name[i]; i++) {
+        char c = s->player1_name[i]; p1[i] = (c=='/'||c=='\\'||c==':'||c==' ') ? '_' : c;
+    }
+    for (size_t i = 0; i < sizeof(p2)-1 && s->player2_name[i]; i++) {
+        char c = s->player2_name[i]; p2[i] = (c=='/'||c=='\\'||c==':'||c==' ') ? '_' : c;
+    }
+
+    char fname[1024];
+    /* Build filename without timestamp; if file exists add a numeric suffix */
+    snprintf(fname, sizeof(fname), "saved_games/%s_vs_%s.awale", p1, p2);
+    /* If the file exists, try suffixes _1 ... _999 */
+    for (int suffix = 1; suffix < 1000; suffix++) {
+        FILE *fcheck = fopen(fname, "r");
+        if (!fcheck) break; /* doesn't exist, good */
+        fclose(fcheck);
+        snprintf(fname, sizeof(fname), "saved_games/%s_vs_%s_%d.awale", p1, p2, suffix);
+    }
+
+    FILE *f = fopen(fname, "w");
+    if (!f) return -1;
+
+    fprintf(f, "# Awale saved game v1\n");
+    fprintf(f, "players: %s|%s\n", s->player1_name, s->player2_name);
+    /* No timestamps are recorded per request */
+    fprintf(f, "winner: %d\n", s->game->winner);
+    fprintf(f, "scores: %d %d\n", s->game->scores[0], s->game->scores[1]);
+    fprintf(f, "holes:");
+    for (int i = 0; i < TOTAL_HOLES; i++) fprintf(f, " %d", s->game->holes[i]);
+    fprintf(f, "\n");
+
+    fprintf(f, "moves_count: %d\n", s->move_count);
+    fprintf(f, "moves:\n");
+    for (int i = 0; i < s->move_count; i++) {
+        /* Write moves as: player|hole (hole=-1 means give up) */
+        fprintf(f, "%s|%d\n", s->moves[i].player, s->moves[i].hole);
+    }
+
+    fclose(f);
+    printf("Saved game to %s\n", fname);
+    return 0;
+}
 
 /* Function prototypes */
 void sessions_init(void);
@@ -43,6 +103,8 @@ void sessions_init(void)
         sessions[i].active = 0;
         sessions[i].game = NULL;
         sessions[i].num_observers = 0;
+        sessions[i].move_count = 0;
+        sessions[i].start_time = 0;
     }
 }
 
@@ -69,7 +131,9 @@ int session_create(const char *player1, SOCKET sock1, const char *player2, SOCKE
     sessions[slot].player2_sock = sock2;
     sessions[slot].game = awale_create();
     sessions[slot].num_observers = 0;
-    
+    sessions[slot].move_count = 0;
+    sessions[slot].start_time = time(NULL);
+
     /* Randomly decide who starts */
     sessions[slot].game->current_player = rand()%2;
     
@@ -165,8 +229,19 @@ int session_handle_move(int session_id, const char *player_name, int hole)
         return -1;
     }
     
+    /* Record the move */
+    if (session->move_count < (int)(sizeof(session->moves)/sizeof(session->moves[0]))) {
+        strncpy(session->moves[session->move_count].player, player_name, sizeof(session->moves[session->move_count].player)-1);
+        session->moves[session->move_count].player[sizeof(session->moves[session->move_count].player)-1] = '\0';
+        session->moves[session->move_count].hole = hole;
+        session->moves[session->move_count].when = time(NULL);
+        session->move_count++;
+    }
+
     /* Check if game is over */
     if (awale_is_game_over(session->game)) {
+        /* Save completed game before notifying/destroying */
+        session_save_game(session_id);
         session_notify_game_over(session_id);
         session_destroy(session_id);
     }
@@ -334,10 +409,20 @@ int session_give_up(int session_id, const char *player_name)
         session->game->holes[i] = 0;
     }
 
+    /* Record give-up event */
+    if (session->move_count < (int)(sizeof(session->moves)/sizeof(session->moves[0]))) {
+        strncpy(session->moves[session->move_count].player, player_name, sizeof(session->moves[session->move_count].player)-1);
+        session->moves[session->move_count].player[sizeof(session->moves[session->move_count].player)-1] = '\0';
+        session->moves[session->move_count].hole = -1; /* give-up marker */
+        session->moves[session->move_count].when = time(NULL);
+        session->move_count++;
+    }
+
     session->game->game_over = 1;
     session->game->winner = opponent;
 
-    /* Notify and cleanup */
+    /* Save completed game, then notify and cleanup */
+    session_save_game(session_id);
     session_notify_game_over(session_id);
     session_destroy(session_id);
 
