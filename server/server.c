@@ -296,34 +296,47 @@ static void handle_client_message(int player_index)
         case MSG_PLAY_MOVE:
         {
             player_t *player = find_player_by_name(msg.sender);
-            if (!player->in_game) {
-                message_t error;
-                protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "You're not in game !");
-                protocol_send_message(player->sock, &error);
-                break;
+            if (!player) {
+            message_t error;
+            protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Player not found");
+            protocol_send_message(players[player_index].sock, &error);
+            break;
             }
+
+            if (!player->in_game) {
+            message_t error;
+            protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "You're not in game !");
+            protocol_send_message(player->sock, &error);
+            break;
+            }
+
             int sid = session_find_by_player(player->name);
             if (sid < 0) {
-                message_t error;
-                protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "No active session");
-                protocol_send_message(player->sock, &error);
-                break;
+            message_t error;
+            protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "No active session");
+            protocol_send_message(player->sock, &error);
+            break;
             }
-            const char *opponent_name = session_get_opponent_name(sid, player->name);
-            player_t *opponent = find_player_by_name(opponent_name);
 
-            session_handle_move(sid, player->name, atoi(msg.data));
+            const char *opponent_name = session_get_opponent_name(sid, player->name);
+            player_t *opponent = opponent_name ? find_player_by_name(opponent_name) : NULL;
+
+            int move = atoi(msg.data);
+            session_handle_move(sid, player->name, move);
+            printf("Move handled for '%s' in session %d\n", player->name, sid);
             session_broadcast_state(sid);
 
             // Check for game over
             if (session_find_by_player(player->name) == -1) {
-                if (player) { 
-                    player->in_game = 0; 
-                    player->player_index = -1; 
+                printf("Session %d ended. Clearing in_game flags for '%s'%s\n",
+                    sid, player->name, opponent ? "" : " (no opponent found)");
+                if (player) {
+                    player->in_game = 0;
+                    player->player_index = -1;
                 }
-                if (opponent) { 
-                    opponent->in_game = 0; 
-                    opponent->player_index = -1; 
+                if (opponent) {
+                    opponent->in_game = 0;
+                    opponent->player_index = -1;
                 }
             }
         }
@@ -368,6 +381,7 @@ static void handle_client_message(int player_index)
                 protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "Failed to process give up");
                 protocol_send_message(player->sock, &error);
             }
+            printf("%s gave up the game\n", player->name);
         }
             break;
             
@@ -494,9 +508,4 @@ static player_t* find_player_by_name(const char *name)
         }
     }
     return NULL;
-}
-
-static void broadcast_player_list(void)
-{
-    /* Format player names into a message and broadcast */
 }
