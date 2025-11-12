@@ -71,3 +71,6 @@ test_game
 
 # Database files
 accounts.db
+
+#others
+*.awale
