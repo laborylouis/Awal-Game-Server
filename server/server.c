@@ -32,6 +32,9 @@ typedef struct {
     char name[64];
     char hash[MAX_PASSWORD_HASH_LENGTH];
     char bio[BUF_SIZE];
+        /* Comma-separated list of friend account indexes (as decimal text) 
+        the max length is BUF_SIZE bc it has to be sent to the client */
+        char friends[BUF_SIZE];
 } account_t;
 static account_t accounts[MAX_ACCOUNTS];
 static int num_accounts = 0;
@@ -72,9 +75,13 @@ static void load_accounts(void)
         char *p2 = strchr(p1 + 1, '|');
         if (!p2) continue;
         *p2 = '\0';
+        char *p3 = strchr(p2 + 1, '|');
+        if (!p3) continue; /* require friends field (may be empty) */
+        *p3 = '\0';
         char *name = line;
         char *hash = p1 + 1;
         char *bio_esc = p2 + 1;
+        char *friends_esc = p3 + 1;
         if (num_accounts < MAX_ACCOUNTS) {
             strncpy(accounts[num_accounts].name, name, sizeof(accounts[num_accounts].name)-1);
             accounts[num_accounts].name[sizeof(accounts[num_accounts].name)-1] = '\0';
@@ -82,6 +89,7 @@ static void load_accounts(void)
             accounts[num_accounts].hash[sizeof(accounts[num_accounts].hash)-1] = '\0';
             /* Unescape bio */
             unescape_string(bio_esc, accounts[num_accounts].bio, sizeof(accounts[num_accounts].bio));
+            unescape_string(friends_esc, accounts[num_accounts].friends, sizeof(accounts[num_accounts].friends));
             num_accounts++;
         }
     }
@@ -115,15 +123,79 @@ static int add_account(const char *name, const char *hash, const char *bio)
     return 0;
 }
 
-/* Save all accounts to ACCOUNTS_FILE using escaped bios */
+/* Helper: check whether account acc_idx has friend with account index friend_idx */
+static int account_has_friend_idx(int acc_idx, int friend_idx)
+{
+    if (acc_idx < 0 || acc_idx >= num_accounts || friend_idx < 0 || friend_idx >= num_accounts) return 0;
+    /* friends is CSV of decimal indexes */
+    char temp[BUF_SIZE];
+    strncpy(temp, accounts[acc_idx].friends, sizeof(temp)-1);
+    temp[sizeof(temp)-1] = '\0';
+    char *tok = strtok(temp, ",");
+    while (tok) {
+        int val = atoi(tok);
+        if (val == friend_idx) return 1;
+        tok = strtok(NULL, ",");
+    }
+    return 0;
+}
+
+/* Add friend by account index to account's friends csv (no duplicates). Persist changes. */
+static int account_add_friend_idx(int acc_idx, int friend_idx)
+{
+    if (acc_idx < 0 || acc_idx >= num_accounts || friend_idx < 0 || friend_idx >= num_accounts) return -1;
+    if (account_has_friend_idx(acc_idx, friend_idx)) return 0; /* already friend */
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%d", friend_idx);
+    size_t cur = strlen(accounts[acc_idx].friends);
+    if (cur > 0) {
+        if (cur + 1 + strlen(buf) + 1 >= sizeof(accounts[acc_idx].friends)) return -1;
+        strcat(accounts[acc_idx].friends, ",");
+        strcat(accounts[acc_idx].friends, buf);
+    } else {
+        if (strlen(buf) + 1 >= sizeof(accounts[acc_idx].friends)) return -1;
+        strcpy(accounts[acc_idx].friends, buf);
+    }
+    return save_accounts();
+}
+
+/* Remove friend by account index from account's friends csv and persist. */
+static int account_remove_friend_idx(int acc_idx, int friend_idx)
+{
+    if (acc_idx < 0 || acc_idx >= num_accounts || friend_idx < 0 || friend_idx >= num_accounts) return -1;
+    char temp[BUF_SIZE];
+    char out[BUF_SIZE];
+    temp[0] = '\0'; out[0] = '\0';
+    strncpy(temp, accounts[acc_idx].friends, sizeof(temp)-1);
+    temp[sizeof(temp)-1] = '\0';
+    char *tok = strtok(temp, ",");
+    int first = 1;
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%d", friend_idx);
+    while (tok) {
+        if (strcmp(tok, buf) != 0) {
+            if (!first) strcat(out, ",");
+            strcat(out, tok);
+            first = 0;
+        }
+        tok = strtok(NULL, ",");
+    }
+    strncpy(accounts[acc_idx].friends, out, sizeof(accounts[acc_idx].friends)-1);
+    accounts[acc_idx].friends[sizeof(accounts[acc_idx].friends)-1] = '\0';
+    return save_accounts();
+}
+
+/* Save all accounts to ACCOUNTS_FILE using escaped bio and friends */
 static int save_accounts(void)
 {
     FILE *f = fopen(ACCOUNTS_FILE, "w");
     if (!f) return -1;
     char bio_esc[BUF_SIZE * 2];
+    char friends_esc[BUF_SIZE * 2];
     for (int i = 0; i < num_accounts; i++) {
         escape_string(accounts[i].bio, bio_esc, sizeof(bio_esc));
-        fprintf(f, "%s|%s|%s\n", accounts[i].name, accounts[i].hash, bio_esc);
+        escape_string(accounts[i].friends, friends_esc, sizeof(friends_esc));
+        fprintf(f, "%s|%s|%s|%s\n", accounts[i].name, accounts[i].hash, bio_esc, friends_esc);
     }
     fclose(f);
     return 0;
@@ -373,9 +445,182 @@ static void handle_client_message(int player_index)
             protocol_send_message(players[player_index].sock, &out);
         }
             break;
+
+        case MSG_LIST_FRIENDS:
+        {
+            /* Build list of friends for this player, show online status.
+             * friends are stored as CSV of account indexes. */
+            int acc = find_account_index(players[player_index].name);
+            char list[BUF_SIZE];
+            int offset = 0;
+            if (acc < 0) {
+                snprintf(list, sizeof(list), "No account found\n");
+            } else if (accounts[acc].friends[0] == '\0') {
+                snprintf(list, sizeof(list), "No friends\n");
+            } else {
+                char temp[BUF_SIZE];
+                strncpy(temp, accounts[acc].friends, sizeof(temp)-1);
+                temp[sizeof(temp)-1] = '\0';
+                char *tok = strtok(temp, ",");
+                while (tok) {
+                    int friend_idx = atoi(tok);
+                    const char *fname = NULL;
+                    if (friend_idx >= 0 && friend_idx < num_accounts) {
+                        fname = accounts[friend_idx].name;
+                    }
+                    if (fname) {
+                        player_t *p = find_player_by_name(fname);
+                        offset += snprintf(list + offset, sizeof(list) - offset, "%s%s\n", fname, p ? " (online)" : "");
+                        if (offset >= (int)sizeof(list)) break;
+                    }
+                    tok = strtok(NULL, ",");
+                }
+            }
+            message_t out;
+            protocol_create_message(&out, MSG_FRIENDS_LIST, "server", players[player_index].name, list);
+            protocol_send_message(players[player_index].sock, &out);
+        }
+            break;
+
+        case MSG_ADD_FRIEND:
+        {
+            /* Send a friend request to the target player (if online). The client must accept.
+             * msg.data contains the target username. */
+            const char *toadd = msg.data;
+            int acc = find_account_index(players[player_index].name);
+            message_t out;
+            if (acc < 0) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", players[player_index].name, "Your account was not found. Try later.");
+                protocol_send_message(players[player_index].sock, &out);
+                break;
+            }
+            int target_acc = find_account_index(toadd);
+            if (target_acc < 0) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", players[player_index].name, "User not found");
+                protocol_send_message(players[player_index].sock, &out);
+                break;
+            }
+            if (target_acc == acc) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", players[player_index].name, "You cannot add yourself");
+                protocol_send_message(players[player_index].sock, &out);
+                break;
+            }
+            if (account_has_friend_idx(acc, target_acc)) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", players[player_index].name, "Already a friend");
+                protocol_send_message(players[player_index].sock, &out);
+                break;
+            }
+
+            /* Ensure target is online so they can accept */
+            player_t *target_player = find_player_by_name(accounts[target_acc].name);
+            if (!target_player) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", players[player_index].name, "User is not online");
+                protocol_send_message(players[player_index].sock, &out);
+                break;
+            }
+
+            /* Forward the request to the target */
+            message_t req;
+            protocol_create_message(&req, MSG_FRIEND_REQUEST, players[player_index].name, target_player->name, "");
+            protocol_send_message(target_player->sock, &req);
+
+            protocol_create_message(&out, MSG_FRIEND_RESULT, "server", players[player_index].name, "Friend request sent");
+            protocol_send_message(players[player_index].sock, &out);
+        }
+            break;
+
+        case MSG_FRIEND_REQUEST_ACCEPT:
+        {
+            /* msg.sender = acceptor, msg.recipient = original requester */
+            int acc_acceptor = find_account_index(msg.sender);
+            int acc_requester = find_account_index(msg.recipient);
+            message_t out;
+            if (acc_acceptor < 0 || acc_requester < 0) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", msg.sender, "Account not found");
+                protocol_send_message(players[player_index].sock, &out);
+                break;
+            }
+
+            /* Add both sides; account_add_friend_idx persists */
+            if (account_add_friend_idx(acc_acceptor, acc_requester) != 0) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", msg.sender, "Failed to add friend");
+                protocol_send_message(players[player_index].sock, &out);
+                break;
+            }
+            if (account_add_friend_idx(acc_requester, acc_acceptor) != 0) {
+                /* best-effort: try to roll back the first add (optional) */
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", msg.sender, "Failed to add friend on other side");
+                protocol_send_message(players[player_index].sock, &out);
+                break;
+            }
+
+            /* Notify both players if online */
+            player_t *requester_player = find_player_by_name(accounts[acc_requester].name);
+            player_t *acceptor_player = find_player_by_name(accounts[acc_acceptor].name);
+            if (acceptor_player) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", acceptor_player->name, "Friend added");
+                protocol_send_message(acceptor_player->sock, &out);
+            }
+            if (requester_player) {
+                char buf[BUF_SIZE];
+                snprintf(buf, sizeof(buf), "%s accepted your friend request", msg.sender);
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", requester_player->name, buf);
+                protocol_send_message(requester_player->sock, &out);
+            }
+        }
+            break;
+
+        case MSG_FRIEND_REQUEST_REFUSE:
+        {
+            /* msg.sender = refuser, msg.recipient = original requester */
+            message_t out;
+            player_t *requester_player = find_player_by_name(msg.recipient);
+            if (requester_player) {
+                char buf[BUF_SIZE];
+                snprintf(buf, sizeof(buf), "%s refused your friend request", msg.sender);
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", msg.recipient, buf);
+                protocol_send_message(requester_player->sock, &out);
+            }
+            /* Acknowledge to the refuser */
+            protocol_create_message(&out, MSG_FRIEND_RESULT, "server", msg.sender, "Friend request refused");
+            protocol_send_message(players[player_index].sock, &out);
+        }
+            break;
+
+        case MSG_REMOVE_FRIEND:
+        {
+            const char *torm = msg.data;
+            int acc = find_account_index(players[player_index].name);
+            message_t out;
+            if (acc < 0) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", players[player_index].name, "Your account was not found. Try later.");
+                protocol_send_message(players[player_index].sock, &out);
+                break;
+            }
+            int target_acc = find_account_index(torm);
+            if (target_acc < 0) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", players[player_index].name, "User not found");
+                protocol_send_message(players[player_index].sock, &out);
+                break;
+            }
+            if (!account_has_friend_idx(acc, target_acc)) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", players[player_index].name, "Not in your friends list");
+                protocol_send_message(players[player_index].sock, &out);
+                break;
+            }
+            // remove both sides
+            if (account_remove_friend_idx(acc, target_acc) == 0 && account_remove_friend_idx(target_acc, acc) == 0) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", players[player_index].name, "Friend removed");
+            } else {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", players[player_index].name, "Failed to remove friend");
+            }
+            protocol_send_message(players[player_index].sock, &out);
+        }
+            break;
             
         case MSG_CHALLENGE:
             {
+                printf("Received challenge from %s to %s\n", msg.sender, msg.recipient);
                 /* Find the opponent */
                 player_t *opponent = find_player_by_name(msg.recipient);
                 
@@ -426,6 +671,7 @@ static void handle_client_message(int player_index)
                 protocol_send_message(players[player_index].sock, &error);
                 break;
             }
+
             if (challenger->in_game) {
                 message_t error;
                 char reason[BUF_SIZE];
@@ -728,13 +974,3 @@ static player_t* find_player_by_name(const char *name)
     }
     return NULL;
 }
-
-// void hash_password(const char *password, char *hashed_password) {
-//     unsigned char digest[MD5_DIGEST_LENGTH];
-    
-//     MD5((unsigned char*)password, strlen(password), digest);
-
-//     for (int i = 0; i < MD5_DIGEST_LENGTH; i++) {
-//         sprintf(&hashed_password[i*2], "%02x", (unsigned int)digest[i]);
-//     }
-// }

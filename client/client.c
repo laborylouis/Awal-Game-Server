@@ -77,7 +77,7 @@ int main(int argc, char **argv)
         cleanup_client();
         return EXIT_FAILURE;
     }
-    
+
     /* Main client loop */
     run_client_loop();
     
@@ -133,7 +133,6 @@ static void run_client_loop(void)
         
         /* Handle user input */
         if (FD_ISSET(STDIN_FILENO, &readfds)) {
-            printf("\nType 'help' for available commands\n\n");
             handle_user_input();
         }
         
@@ -224,6 +223,36 @@ static void handle_user_input(void)
         protocol_send_message(server_sock, &msg);
         printf("Requested to observe session %d\n", session_id);
     }
+    else if (strcmp(input, "friends") == 0) {
+        message_t msg;
+        protocol_create_message(&msg, MSG_LIST_FRIENDS, username, "", "");
+        protocol_send_message(server_sock, &msg);
+    }
+    else if (strncmp(input, "addfriend ", 10) == 0) {
+        char *name = input + 10;
+        /* Send a friend request to the server which will forward to the target */
+        message_t msg;
+        protocol_create_message(&msg, MSG_ADD_FRIEND, username, "", name);
+        protocol_send_message(server_sock, &msg);
+    }
+    else if (strncmp(input, "rmfriend ", 9) == 0) {
+        char *name = input + 9;
+        message_t msg;
+        protocol_create_message(&msg, MSG_REMOVE_FRIEND, username, "", name);
+        protocol_send_message(server_sock, &msg);
+    }
+    else if (strncmp(input, "acceptfriend ", 13) == 0) {
+        char *who = input + 13;
+        message_t msg;
+        protocol_create_message(&msg, MSG_FRIEND_REQUEST_ACCEPT, username, who, "");
+        protocol_send_message(server_sock, &msg);
+    }
+    else if (strncmp(input, "refusefriend ", 13) == 0) {
+        char *who = input + 13;
+        message_t msg;
+        protocol_create_message(&msg, MSG_FRIEND_REQUEST_REFUSE, username, who, "");
+        protocol_send_message(server_sock, &msg);
+    }
     else if (strcmp(input, "quit") == 0) {
         printf("Disconnecting...\n");
         exit(0);
@@ -296,6 +325,11 @@ static void handle_server_message(void)
     }
     
     switch (msg.type) {
+        case MSG_LOGIN_SUCCESS:
+            printf("Logged as %s\n", username);
+            printf("\nType 'help' for available commands\n\n");
+            break;
+
         case MSG_GAME_START:
             printf("\n=== Game starting against %s ===\n", msg.data);
             in_game = 1;
@@ -318,6 +352,12 @@ static void handle_server_message(void)
             printf("\n>>> %s challenges you to a game! <<<\n", msg.sender);
             printf("Type 'accept %s' or 'refuse %s'\n", msg.sender, msg.sender);
             break;
+
+        case MSG_FRIEND_REQUEST:
+            /* Server informs us that someone requested to be our friend; msg.sender is the requester */
+            printf("\n>>> %s sent you a friend request! <<<\n", msg.sender);
+            printf("Type 'acceptfriend %s' to accept or 'refusefriend %s' to refuse\n", msg.sender, msg.sender);
+            break;
             
         case MSG_CHAT:
             printf("[%s]: %s\n", msg.sender, msg.data);
@@ -333,6 +373,14 @@ static void handle_server_message(void)
 
         case MSG_GAME_LIST:
             printf("Active game sessions:\n%s\n", msg.data);
+            break;
+
+        case MSG_FRIENDS_LIST:
+            printf("Your friends:\n%s\n", msg.data);
+            break;
+
+        case MSG_FRIEND_RESULT:
+            printf("%s\n", msg.data);
             break;
 
         case MSG_SPECTATE:
@@ -365,6 +413,9 @@ static void print_help(void)
     printf("  bio view <pseudo>   - View the bio of a player\n");
     printf("  bio edit            - Edit your bio\n");
     printf("  give up             - Give up a game\n");
+    printf("  addfriend <name>    - Send a friend request to <name> (they must accept)\n");
+    printf("  acceptfriend <name> - Accept a pending friend request from <name>\n");
+    printf("  refusefriend <name> - Refuse a pending friend request from <name>\n");
     printf("  quit                - Disconnect and exit\n");
     printf("\n");
 }

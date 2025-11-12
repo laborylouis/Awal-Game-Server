@@ -7,8 +7,17 @@
 typedef enum {
     MSG_LOGIN,              /* Client logs in with username */
     MSG_LOGOUT,             /* Client disconnects */
+    MSG_LOGIN_SUCCESS,      /* Server confirms successful login */
     MSG_LIST_PLAYERS,       /* Request list of online players */
     MSG_PLAYER_LIST,        /* Server response with player list */
+    MSG_LIST_FRIENDS,       /* Request list of friends */
+    MSG_FRIENDS_LIST,       /* Server response with friends list */
+    MSG_ADD_FRIEND,         /* Request to add a friend (data = friend's username) */
+    MSG_REMOVE_FRIEND,      /* Request to remove a friend (data = friend's username) */
+    MSG_FRIEND_REQUEST,      /* Server->client: incoming friend request (sender set to requester) */
+    MSG_FRIEND_REQUEST_ACCEPT, /* Client->server: accept a friend request (recipient = requester) */
+    MSG_FRIEND_REQUEST_REFUSE, /* Client->server: refuse a friend request (recipient = requester) */
+    MSG_FRIEND_RESULT,      /* Result of add/remove friend (success/error text in data) */
     MSG_LIST_GAMES,         /* Request list of ongoing games (sessions) */
     MSG_GAME_LIST,          /* Server response with games list */
     MSG_CHALLENGE,          /* Player A challenges player B */
@@ -21,10 +30,10 @@ typedef enum {
     MSG_GAME_OVER,          /* Game ended */
     MSG_CHAT,               /* Chat message */
     MSG_ERROR,              /* Error message */
-    MSG_BIO_VIEW,                /* Player bio request/response */
+    MSG_BIO_VIEW,           /* Player bio request/response */
     MSG_BIO_EDIT,
-    MSG_SPECTATE,            /* Request to spectate a game */
-    MSG_GIVE_UP
+    MSG_SPECTATE,           /* Request to spectate a game */
+    MSG_GIVE_UP             /* Player gives up the game */
 } msg_type_t;
 
 /* Protocol message structure */
