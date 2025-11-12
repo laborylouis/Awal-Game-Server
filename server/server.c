@@ -20,6 +20,8 @@ typedef struct {
     int player_index;
     int num_pending_challengers;
     char pending_challengers[MAX_PENDING_CHALLENGES][64];
+    int num_pending_friend_requests;
+    char pending_friend_requests[MAX_PENDING_CHALLENGES][64];
     char bio[BUF_SIZE];
     int private_mode; /* 1 = private (only friends can spectate), 0 = public */
 } player_t;
@@ -35,9 +37,9 @@ typedef struct {
     char name[64];
     char hash[MAX_PASSWORD_HASH_LENGTH];
     char bio[BUF_SIZE];
-        /* Comma-separated list of friend account indexes (as decimal text) 
-        the max length is BUF_SIZE bc it has to be sent to the client */
-        char friends[BUF_SIZE];
+    /* Comma-separated list of friend account indexes (as decimal text) 
+    the max length is BUF_SIZE bc it has to be sent to the client */
+    char friends[BUF_SIZE];
 } account_t;
 static account_t accounts[MAX_ACCOUNTS];
 static int num_accounts = 0;
@@ -449,6 +451,7 @@ static void handle_client_message(int player_index)
         /* Before removing the player, remove them from any other players' pending lists */
         for (int i = 0; i < num_players; i++) {
             if (i == player_index) continue;
+            /* remove from pending challengers */
             for (int p = 0; p < players[i].num_pending_challengers; p++) {
                 if (strcmp(players[i].pending_challengers[p], players[player_index].name) == 0) {
                     /* shift the remaining entries */
@@ -456,6 +459,16 @@ static void handle_client_message(int player_index)
                         strncpy(players[i].pending_challengers[q], players[i].pending_challengers[q+1], sizeof(players[i].pending_challengers[q]));
                     }
                     players[i].num_pending_challengers--;
+                    p--; /* re-check this index */
+                }
+            }
+            /* remove from pending friend requests */
+            for (int p = 0; p < players[i].num_pending_friend_requests; p++) {
+                if (strcmp(players[i].pending_friend_requests[p], players[player_index].name) == 0) {
+                    for (int q = p; q < players[i].num_pending_friend_requests - 1; q++) {
+                        strncpy(players[i].pending_friend_requests[q], players[i].pending_friend_requests[q+1], sizeof(players[i].pending_friend_requests[q]));
+                    }
+                    players[i].num_pending_friend_requests--;
                     p--; /* re-check this index */
                 }
             }
@@ -565,6 +578,18 @@ static void handle_client_message(int player_index)
                 break;
             }
 
+            /* Record pending friend request on the target so they can accept/refuse later.
+               Keep a small list (avoid duplicates). */
+            int fexists = 0;
+            for (int p = 0; p < target_player->num_pending_friend_requests; p++) {
+                if (strcmp(target_player->pending_friend_requests[p], players[player_index].name) == 0) { fexists = 1; break; }
+            }
+            if (!fexists && target_player->num_pending_friend_requests < MAX_PENDING_CHALLENGES) {
+                strncpy(target_player->pending_friend_requests[target_player->num_pending_friend_requests], players[player_index].name, sizeof(target_player->pending_friend_requests[0]) - 1);
+                target_player->pending_friend_requests[target_player->num_pending_friend_requests][sizeof(target_player->pending_friend_requests[0]) - 1] = '\0';
+                target_player->num_pending_friend_requests++;
+            }
+
             /* Forward the request to the target */
             message_t req;
             protocol_create_message(&req, MSG_FRIEND_REQUEST, players[player_index].name, target_player->name, "");
@@ -581,6 +606,17 @@ static void handle_client_message(int player_index)
             int acc_acceptor = find_account_index(msg.sender);
             int acc_requester = find_account_index(msg.recipient);
             message_t out;
+            /* Ensure there was a pending friend request from requester to acceptor */
+            player_t *acceptor_player = &players[player_index];
+            int found = 0;
+            for (int p = 0; p < acceptor_player->num_pending_friend_requests; p++) {
+                if (strcmp(acceptor_player->pending_friend_requests[p], msg.recipient) == 0) { found = 1; break; }
+            }
+            if (!found) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", msg.sender, "No pending friend request from this user");
+                protocol_send_message(acceptor_player->sock, &out);
+                break;
+            }
             if (acc_acceptor < 0 || acc_requester < 0) {
                 protocol_create_message(&out, MSG_FRIEND_RESULT, "server", msg.sender, "Account not found");
                 protocol_send_message(players[player_index].sock, &out);
@@ -602,7 +638,7 @@ static void handle_client_message(int player_index)
 
             /* Notify both players if online */
             player_t *requester_player = find_player_by_name(accounts[acc_requester].name);
-            player_t *acceptor_player = find_player_by_name(accounts[acc_acceptor].name);
+            acceptor_player = find_player_by_name(accounts[acc_acceptor].name);
             if (acceptor_player) {
                 protocol_create_message(&out, MSG_FRIEND_RESULT, "server", acceptor_player->name, "Friend added");
                 protocol_send_message(acceptor_player->sock, &out);
@@ -613,6 +649,16 @@ static void handle_client_message(int player_index)
                 protocol_create_message(&out, MSG_FRIEND_RESULT, "server", requester_player->name, buf);
                 protocol_send_message(requester_player->sock, &out);
             }
+            /* Remove the pending entry from acceptor */
+            for (int p = 0; p < acceptor_player->num_pending_friend_requests; p++) {
+                if (strcmp(acceptor_player->pending_friend_requests[p], msg.recipient) == 0) {
+                    for (int q = p; q < acceptor_player->num_pending_friend_requests - 1; q++) {
+                        strncpy(acceptor_player->pending_friend_requests[q], acceptor_player->pending_friend_requests[q+1], sizeof(acceptor_player->pending_friend_requests[q]));
+                    }
+                    acceptor_player->num_pending_friend_requests--;
+                    break;
+                }
+            }
         }
             break;
 
@@ -620,12 +666,33 @@ static void handle_client_message(int player_index)
         {
             /* msg.sender = refuser, msg.recipient = original requester */
             message_t out;
+            player_t *refuser = &players[player_index];
+            /* Ensure there was a pending request from requester to this refuser */
+            int foundr = 0;
+            for (int p = 0; p < refuser->num_pending_friend_requests; p++) {
+                if (strcmp(refuser->pending_friend_requests[p], msg.recipient) == 0) { foundr = 1; break; }
+            }
+            if (!foundr) {
+                protocol_create_message(&out, MSG_FRIEND_RESULT, "server", msg.sender, "No pending friend request from this user");
+                protocol_send_message(refuser->sock, &out);
+                break;
+            }
             player_t *requester_player = find_player_by_name(msg.recipient);
             if (requester_player) {
                 char buf[BUF_SIZE];
                 snprintf(buf, sizeof(buf), "%s refused your friend request", msg.sender);
                 protocol_create_message(&out, MSG_FRIEND_RESULT, "server", msg.recipient, buf);
                 protocol_send_message(requester_player->sock, &out);
+            }
+            /* Remove the pending entry from refuser */
+            for (int p = 0; p < refuser->num_pending_friend_requests; p++) {
+                if (strcmp(refuser->pending_friend_requests[p], msg.recipient) == 0) {
+                    for (int q = p; q < refuser->num_pending_friend_requests - 1; q++) {
+                        strncpy(refuser->pending_friend_requests[q], refuser->pending_friend_requests[q+1], sizeof(refuser->pending_friend_requests[q]));
+                    }
+                    refuser->num_pending_friend_requests--;
+                    break;
+                }
             }
             /* Acknowledge to the refuser */
             protocol_create_message(&out, MSG_FRIEND_RESULT, "server", msg.sender, "Friend request refused");
@@ -1115,7 +1182,9 @@ static int add_player(SOCKET sock, const char *name)
     players[num_players].player_index = -1;
     players[num_players].private_mode = 0;
     players[num_players].num_pending_challengers = 0;
+    players[num_players].num_pending_friend_requests = 0;
     for (int p = 0; p < MAX_PENDING_CHALLENGES; p++) players[num_players].pending_challengers[p][0] = '\0';
+    for (int p = 0; p < MAX_PENDING_CHALLENGES; p++) players[num_players].pending_friend_requests[p][0] = '\0';
     /* Copy bio from account store if available */
     int acc = find_account_index(name);
     if (acc >= 0) {
