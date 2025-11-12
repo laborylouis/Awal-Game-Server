@@ -350,6 +350,26 @@ static void handle_client_message(int player_index)
     
     if (result <= 0) {
         printf("Player '%s' disconnected\n", players[player_index].name);
+        /* If the player was in a game, ensure the session is cleaned up and the opponent's
+           in_game flag is cleared so they are not left marked as in-game. */
+        if (players[player_index].in_game) {
+            /* Find session and opponent */
+            int sid = session_find_by_player(players[player_index].name);
+            const char *opponent_name = (sid >= 0) ? session_get_opponent_name(sid, players[player_index].name) : NULL;
+            player_t *opponent = opponent_name ? find_player_by_name(opponent_name) : NULL;
+
+            /* If a session exists, perform give-up to finalize and destroy the session. */
+            if (sid >= 0) {
+                session_give_up(sid, players[player_index].name);
+            }
+
+            /* Clear opponent flags if opponent is present in players[] */
+            if (opponent) {
+                opponent->in_game = 0;
+                opponent->player_index = -1;
+            }
+        }
+
         net_close(players[player_index].sock);
         remove_player(player_index);
         return;

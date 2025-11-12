@@ -1,5 +1,5 @@
 # Features
-- Jouer à plusieurs games en même temps
+- 5 Jouer à plusieurs games en même temps
 - points 8(mode private, liste d'amis)
 
 - Ajouter des docblocks pour toutes les fonctions
