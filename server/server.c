@@ -379,7 +379,7 @@ static void handle_new_connection(SOCKET server_sock)
                         printf("Player '%s' logged in\n", username);
                         /* Notify client that login succeeded */
                         message_t ok_msg;
-                        protocol_create_chat(&ok_msg, "server", username, "Login successful. Welcome!");
+                        protocol_create_message(&ok_msg, MSG_LOGIN_SUCCESS, "server", username, "Login successful");
                         protocol_send_message(client_sock, &ok_msg);
                     } else {
                         message_t err;
