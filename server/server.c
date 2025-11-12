@@ -11,24 +11,25 @@
 #include "session.h"
 
 #define MAX_PLAYERS 100 // Maximum connected players
+#define MAX_PENDING_CHALLENGES 10 /* Max pending challengers stored per player */
 
 typedef struct {
     SOCKET sock;
     char name[64];
     int in_game;
-    int player_index; /* 0 or 1 in current game */
-    char pending_challenger[64]; /* name of player who last challenged this player */
+    int player_index;
+    int num_pending_challengers;
+    char pending_challengers[MAX_PENDING_CHALLENGES][64];
     char bio[BUF_SIZE];
 } player_t;
 
 static player_t players[MAX_PLAYERS];
 static int num_players = 0;
 
-/* ***** Account storage (persistent) ***** */
 
 #define ACCOUNTS_FILE "accounts.db"
-#define MAX_ACCOUNTS 1000 // Maximum number of accounts stored
-#define MAX_PASSWORD_HASH_LENGTH 65 // Length for password hash strings
+#define MAX_ACCOUNTS 1000 
+#define MAX_PASSWORD_HASH_LENGTH 65
 typedef struct {
     char name[64];
     char hash[MAX_PASSWORD_HASH_LENGTH];
@@ -372,6 +373,21 @@ static void handle_client_message(int player_index)
         }
 
         net_close(players[player_index].sock);
+        /* Before removing the player, remove them from any other players' pending lists */
+        for (int i = 0; i < num_players; i++) {
+            if (i == player_index) continue;
+            for (int p = 0; p < players[i].num_pending_challengers; p++) {
+                if (strcmp(players[i].pending_challengers[p], players[player_index].name) == 0) {
+                    /* shift the remaining entries */
+                    for (int q = p; q < players[i].num_pending_challengers - 1; q++) {
+                        strncpy(players[i].pending_challengers[q], players[i].pending_challengers[q+1], sizeof(players[i].pending_challengers[q]));
+                    }
+                    players[i].num_pending_challengers--;
+                    p--; /* re-check this index */
+                }
+            }
+        }
+
         remove_player(player_index);
         return;
     }
@@ -439,9 +455,17 @@ static void handle_client_message(int player_index)
                     break;
                 }
                 
-                /* Record pending challenger on the opponent so they can only accept if challenged */
-                strncpy(opponent->pending_challenger, msg.sender, sizeof(opponent->pending_challenger)-1);
-                opponent->pending_challenger[sizeof(opponent->pending_challenger)-1] = '\0';
+                /* Record pending challenger on the opponent so they can accept if challenged.
+                   Keep a small list (avoid duplicates). */
+                int exists = 0;
+                for (int p = 0; p < opponent->num_pending_challengers; p++) {
+                    if (strcmp(opponent->pending_challengers[p], msg.sender) == 0) { exists = 1; break; }
+                }
+                if (!exists && opponent->num_pending_challengers < MAX_PENDING_CHALLENGES) {
+                    strncpy(opponent->pending_challengers[opponent->num_pending_challengers], msg.sender, sizeof(opponent->pending_challengers[0]) - 1);
+                    opponent->pending_challengers[opponent->num_pending_challengers][sizeof(opponent->pending_challengers[0]) - 1] = '\0';
+                    opponent->num_pending_challengers++;
+                }
                 /* Forward challenge to opponent */
                 protocol_send_message(opponent->sock, &msg);
                 printf("%s challenges %s\n", msg.sender, msg.recipient);
@@ -458,8 +482,12 @@ static void handle_client_message(int player_index)
                 protocol_send_message(players[player_index].sock, &error);
                 break;
             }
-            /* Ensure the acceptor was actually challenged by this challenger */
-            if (strcmp(acceptor->pending_challenger, challenger->name) != 0) {
+            /* Ensure the acceptor was actually challenged by this challenger (check the pending list) */
+            int found = 0;
+            for (int p = 0; p < acceptor->num_pending_challengers; p++) {
+                if (strcmp(acceptor->pending_challengers[p], challenger->name) == 0) { found = 1; break; }
+            }
+            if (!found) {
                 message_t error;
                 protocol_create_message(&error, MSG_ERROR, "server", msg.sender, "No pending challenge from this player");
                 protocol_send_message(acceptor->sock, &error);
@@ -492,9 +520,26 @@ static void handle_client_message(int player_index)
             acceptor->player_index = 1;
             challenger->player_index = 0;
 
-            /* Clear pending challenger entries for both players */
-            acceptor->pending_challenger[0] = '\0';
-            challenger->pending_challenger[0] = '\0';
+            /* Remove the challenger from the acceptor's pending list */
+            for (int p = 0; p < acceptor->num_pending_challengers; p++) {
+                if (strcmp(acceptor->pending_challengers[p], challenger->name) == 0) {
+                    for (int q = p; q < acceptor->num_pending_challengers - 1; q++) {
+                        strncpy(acceptor->pending_challengers[q], acceptor->pending_challengers[q+1], sizeof(acceptor->pending_challengers[q]));
+                    }
+                    acceptor->num_pending_challengers--;
+                    break;
+                }
+            }
+            /* Also remove any pending entry on challenger referencing acceptor (if present) */
+            for (int p = 0; p < challenger->num_pending_challengers; p++) {
+                if (strcmp(challenger->pending_challengers[p], acceptor->name) == 0) {
+                    for (int q = p; q < challenger->num_pending_challengers - 1; q++) {
+                        strncpy(challenger->pending_challengers[q], challenger->pending_challengers[q+1], sizeof(challenger->pending_challengers[q]));
+                    }
+                    challenger->num_pending_challengers--;
+                    break;
+                }
+            }
 
             printf("%s accepted challenge from %s, session %d created\n", acceptor->name, challenger->name, session_slot);
         }
@@ -510,10 +555,16 @@ static void handle_client_message(int player_index)
                 break;
             }
 
-            /* Clear any pending challenge targeting this acceptor (the player who refused) */
+            /* Clear any pending challenge entries targeting this refuser (the player who refused) */
             player_t *refuser = &players[player_index];
-            if (strcmp(refuser->pending_challenger, challenger->name) == 0) {
-                refuser->pending_challenger[0] = '\0';
+            for (int p = 0; p < refuser->num_pending_challengers; p++) {
+                if (strcmp(refuser->pending_challengers[p], challenger->name) == 0) {
+                    for (int q = p; q < refuser->num_pending_challengers - 1; q++) {
+                        strncpy(refuser->pending_challengers[q], refuser->pending_challengers[q+1], sizeof(refuser->pending_challengers[q]));
+                    }
+                    refuser->num_pending_challengers--;
+                    break;
+                }
             }
 
             message_t refuse_msg;
@@ -734,7 +785,8 @@ static int add_player(SOCKET sock, const char *name)
     strncpy(players[num_players].name, name, sizeof(players[num_players].name) - 1);
     players[num_players].in_game = 0;
     players[num_players].player_index = -1;
-    players[num_players].pending_challenger[0] = '\0';
+    players[num_players].num_pending_challengers = 0;
+    for (int p = 0; p < MAX_PENDING_CHALLENGES; p++) players[num_players].pending_challengers[p][0] = '\0';
     /* Copy bio from account store if available */
     int acc = find_account_index(name);
     if (acc >= 0) {

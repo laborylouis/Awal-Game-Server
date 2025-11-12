@@ -6,6 +6,4 @@
 - README.md
 
 # Bugs
-
-- si on tape accept player alors qu'on a pas été challengé, on force le player dans une game
-- pareil pour acceptfriend
+- on peut forcer un ajout d'ami alors que ça ne devrait pas être le cas
