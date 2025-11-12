@@ -12,6 +12,10 @@ static SOCKET server_sock = INVALID_SOCKET;
 static char username[64];
 static int in_game = 0;
 
+static char saved_server_host[128];
+static int saved_server_port = 0;
+static int last_error_invalid_password = 0;
+
 /* Function prototypes */
 static void init_client(void);
 static void cleanup_client(void);
@@ -34,6 +38,10 @@ int main(int argc, char **argv)
     if (argc > 2) {
         server_port = atoi(argv[2]);
     }
+    /* remember host/port for possible reconnect attempts */
+    strncpy(saved_server_host, server_host, sizeof(saved_server_host)-1);
+    saved_server_host[sizeof(saved_server_host)-1] = '\0';
+    saved_server_port = server_port;
     
     init_client();
 
@@ -61,15 +69,12 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
     
-    /* Prompt for password and send login message (password sent in data field).
-       Note: password is sent in clear over the local network in this simple protocol. */
     char password[128];
     printf("Enter password: ");
     fflush(stdout);
     if (fgets(password, sizeof(password), stdin) == NULL) password[0] = '\0';
     password[strcspn(password, "\n")] = '\0';
 
-    /* Send login message */
     message_t login_msg;
     protocol_create_login(&login_msg, username, password);
     if (protocol_send_message(server_sock, &login_msg) < 0) {
@@ -78,7 +83,6 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
     
-    /* Main client loop */
     run_client_loop();
     
     cleanup_client();
@@ -133,7 +137,7 @@ static void run_client_loop(void)
         
         /* Handle user input */
         if (FD_ISSET(STDIN_FILENO, &readfds)) {
-            printf("\nType 'help' for available commands\n\n");
+            printf("Type 'help' for available commands\n\n");
             handle_user_input();
         }
         
@@ -291,7 +295,28 @@ static void handle_server_message(void)
     int result = protocol_recv_message(server_sock, &msg);
     
     if (result <= 0) {
-        printf("Server disconnected\n");
+        if (last_error_invalid_password) {
+            if (server_sock != INVALID_SOCKET) net_close(server_sock);
+            if (connect_to_server(saved_server_host, saved_server_port) < 0) {
+                fprintf(stderr, "Failed to reconnect to server\n");
+                exit(1);
+            }
+
+            char retry_pw[128];
+            printf("Enter password: ");
+            fflush(stdout);
+            if (fgets(retry_pw, sizeof(retry_pw), stdin) == NULL) retry_pw[0] = '\0';
+            retry_pw[strcspn(retry_pw, "\n")] = '\0';
+            message_t login_msg;
+            protocol_create_login(&login_msg, username, retry_pw);
+            if (protocol_send_message(server_sock, &login_msg) < 0) {
+                fprintf(stderr, "Failed to send login retry\n");
+                exit(1);
+            }
+            last_error_invalid_password = 0;
+            return;
+        }
+        printf("Client disconnected\n");
         exit(0);
     }
     
@@ -324,7 +349,12 @@ static void handle_server_message(void)
             break;
             
         case MSG_ERROR:
-            printf("Error: %s\n", msg.data);
+            if (strcmp(msg.data, "Invalid password") == 0) {
+                printf("Invalid password. Please try again.\n");
+                last_error_invalid_password = 1;
+            } else {
+                printf("Error: %s\n", msg.data);
+            }
             break;
 
         case MSG_CHALLENGE_REFUSE:

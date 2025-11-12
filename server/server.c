@@ -302,6 +302,10 @@ static void handle_new_connection(SOCKET server_sock)
                     int idx = add_player(client_sock, username);
                     if (idx >= 0) {
                         printf("Player '%s' logged in\n", username);
+                        /* Notify client that login succeeded */
+                        message_t ok_msg;
+                        protocol_create_chat(&ok_msg, "server", username, "Login successful. Welcome!");
+                        protocol_send_message(client_sock, &ok_msg);
                     } else {
                         message_t err;
                         protocol_create_message(&err, MSG_ERROR, "server", username, "Failed to add player");
@@ -321,6 +325,10 @@ static void handle_new_connection(SOCKET server_sock)
                 int idx = add_player(client_sock, username);
                 if (idx >= 0) {
                     printf("Registered and logged in new player '%s'\n", username);
+                    /* Notify client that registration and login succeeded */
+                    message_t ok_msg;
+                    protocol_create_chat(&ok_msg, "server", username, "Account created and logged in. Welcome!");
+                    protocol_send_message(client_sock, &ok_msg);
                 } else {
                     message_t err;
                     protocol_create_message(&err, MSG_ERROR, "server", username, "Failed to add player");
