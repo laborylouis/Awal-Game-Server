@@ -36,6 +36,14 @@ int main(int argc, char **argv)
     }
     
     init_client();
+
+    /* Connect to server */
+    if (connect_to_server(server_host, server_port) < 0) {
+        cleanup_client();
+        return EXIT_FAILURE;
+    }
+    
+    printf("Connected to server at %s:%d\n", server_host, server_port);
     
     /* Get username */
     printf("Enter your username: ");
@@ -53,18 +61,17 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
     
-    /* Connect to server */
-    if (connect_to_server(server_host, server_port) < 0) {
-        cleanup_client();
-        return EXIT_FAILURE;
-    }
-    
-    printf("Connected to server at %s:%d\n", server_host, server_port);
-    printf("Type 'help' for available commands\n\n");
-    
+    /* Prompt for password and send login message (password sent in data field).
+       Note: password is sent in clear over the local network in this simple protocol. */
+    char password[128];
+    printf("Enter password: ");
+    fflush(stdout);
+    if (fgets(password, sizeof(password), stdin) == NULL) password[0] = '\0';
+    password[strcspn(password, "\n")] = '\0';
+
     /* Send login message */
     message_t login_msg;
-    protocol_create_login(&login_msg, username);
+    protocol_create_login(&login_msg, username, password);
     if (protocol_send_message(server_sock, &login_msg) < 0) {
         fprintf(stderr, "Failed to send login message\n");
         cleanup_client();
@@ -132,6 +139,7 @@ static void run_client_loop(void)
         /* Handle server messages */
         if (FD_ISSET(server_sock, &readfds)) {
             handle_server_message();
+            printf("\nType 'help' for available commands\n\n");
         }
     }
 }
@@ -183,13 +191,20 @@ static void handle_user_input(void)
         while (*rest == ' ') rest++;
         char *space = strchr(rest, ' ');
         if (space != NULL) {
+            /* Private chat */
             size_t recip_len = space - rest;
             char recip[64];
             if (recip_len >= sizeof(recip)) recip_len = sizeof(recip) - 1;
             strncpy(recip, rest, recip_len);
             recip[recip_len] = '\0';
+
             char *message_text = space + 1;
             protocol_create_chat(&msg, username, recip, message_text);
+            protocol_send_message(server_sock, &msg);
+        } else {
+            /* Session chat */
+            char *message_text = rest;
+            protocol_create_chat(&msg, username, "", message_text);
             protocol_send_message(server_sock, &msg);
         }
     }
@@ -343,7 +358,8 @@ static void print_help(void)
     printf("  accept <name>       - Accept a challenge\n");
     printf("  refuse <name>       - Refuse a challenge\n");
     printf("  move <hole>         - Play a move (hole 0-5)\n");
-    printf("  chat <message>      - Send a chat message\n");
+    printf("  chat <msg>          - Send a session chat message\n");
+    printf("  chat <player> <msg> - Send a private chat message\n");
     printf("  games               - List active game sessions\n");
     printf("  spectate <id>       - Observe a game session by id\n");
     printf("  bio view <pseudo>   - View the bio of a player\n");

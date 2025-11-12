@@ -68,3 +68,6 @@ test_game
 *.swp
 *.swo
 *.bak
+
+# Database files
+accounts.db

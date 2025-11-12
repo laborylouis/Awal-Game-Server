@@ -43,7 +43,12 @@ void protocol_create_message(message_t *msg, msg_type_t type,
                              const char *data);
 
 /* Helper functions for specific messages */
-void protocol_create_login(message_t *msg, const char *username);
+/* Create a login message. `password` may be NULL or empty; it will be placed in the
+    message data field. Clients should send the clear-text password which the server
+    will hash and verify/register. */
+/* Original simple prototype kept for clarity: create a login message for username. */
+/* void protocol_create_login(message_t *msg, const char *username); */
+void protocol_create_login(message_t *msg, const char *username, const char *password);
 void protocol_create_challenge(message_t *msg, const char *from, const char *to);
 void protocol_create_move(message_t *msg, const char *player, int hole);
 void protocol_create_chat(message_t *msg, const char *from, const char *to, const char *text);
