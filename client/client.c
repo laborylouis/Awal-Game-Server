@@ -187,22 +187,24 @@ static void handle_user_input(void)
         printf("Challenge sent to %s\n", opponent);
     }
     else if (strncmp(input, "move ", 5) == 0) {
-        if (!in_game) {
-            printf("You are not in a game\n");
+        /* New syntax: move <session_id> <hole> */
+        char sess[64];
+        int hole = -1;
+        int scanned = sscanf(input + 5, "%63s %d", sess, &hole);
+        if (scanned < 2) {
+            printf("Usage: move <session_id> <hole>\n");
             return;
         }
-        int hole = atoi(input + 5);
         message_t msg;
-        protocol_create_move(&msg, username, hole);
+        protocol_create_move(&msg, username, hole, sess);
         protocol_send_message(server_sock, &msg);
     }
-    else if (strncmp(input, "chat ", 5) == 0) {
+    else if (strncmp(input, "pm ", 3) == 0) {
         message_t msg;
-        char *rest = input + 5;
+        char *rest = input + 3;
         while (*rest == ' ') rest++;
         char *space = strchr(rest, ' ');
         if (space != NULL) {
-            /* Private chat */
             size_t recip_len = space - rest;
             char recip[64];
             if (recip_len >= sizeof(recip)) recip_len = sizeof(recip) - 1;
@@ -210,14 +212,30 @@ static void handle_user_input(void)
             recip[recip_len] = '\0';
 
             char *message_text = space + 1;
-            protocol_create_chat(&msg, username, recip, message_text);
+            protocol_create_private_chat(&msg, username, recip, message_text);
             protocol_send_message(server_sock, &msg);
         } else {
-            /* Session chat */
-            char *message_text = rest;
-            protocol_create_chat(&msg, username, "", message_text);
-            protocol_send_message(server_sock, &msg);
+            printf("Usage: pm <recipient> <message>\n");
         }
+    }
+    else if (strncmp(input, "session ", 8) == 0) {
+        message_t msg;
+        char *rest = input + 8;
+        while (*rest == ' ') rest++;
+        char *space = strchr(rest, ' ');
+        if (space == NULL) {
+            printf("Usage: session <session_id> <message>\n");
+            return;
+        }
+        size_t sess_len = space - rest;
+        char sess[64];
+        if (sess_len >= sizeof(sess)) sess_len = sizeof(sess) - 1;
+        strncpy(sess, rest, sess_len);
+        sess[sess_len] = '\0';
+
+        char *message_text = space + 1;
+        protocol_create_session_chat(&msg, username, sess, message_text);
+        protocol_send_message(server_sock, &msg);
     }
     else if (strcmp(input, "games") == 0) {
         /* Request game session list */
@@ -323,9 +341,9 @@ static void handle_user_input(void)
         protocol_create_message(&msg, MSG_BIO_EDIT, username, "", bio);
         protocol_send_message(server_sock, &msg);
     }
-    else if (strcmp(input,"give up") == 0){
+    else if (strncmp(input, "give up ", 8) == 0){
         message_t msg;
-        protocol_create_message(&msg, MSG_GIVE_UP, username, "", "");
+        protocol_create_message(&msg, MSG_GIVE_UP, username, "", input + 8);
         protocol_send_message(server_sock, &msg);
     }
     else {
@@ -371,17 +389,15 @@ static void handle_server_message(void)
             break;
 
         case MSG_GAME_START:
-            printf("\n=== Game starting against %s ===\n", msg.data);
-            in_game = 1;
+            printf("\n=== Game starting (session id %s) against %s ===\n", msg.recipient, msg.data);
             break;
             
         case MSG_GAME_STATE:
-            printf("%s\n", msg.data);
+            printf("\n[Session id %s]\n%s\n", msg.recipient, msg.data);
             break;
             
         case MSG_GAME_OVER:
-            printf("\n%s\n", msg.data);
-            in_game = 0;
+            printf("\n[Session %s] %s\n", msg.recipient, msg.data);
             break;
             
         case MSG_PLAYER_LIST:
@@ -399,7 +415,7 @@ static void handle_server_message(void)
             printf("Type 'acceptfriend %s' to accept or 'refusefriend %s' to refuse\n", msg.sender, msg.sender);
             break;
             
-        case MSG_CHAT:
+        case MSG_PRIVATE_CHAT:
             printf("[%s]: %s\n", msg.sender, msg.data);
             break;
             
@@ -450,15 +466,15 @@ static void print_help(void)
     printf("  challenge <name>    - Challenge a player to a game\n");
     printf("  accept <name>       - Accept a challenge\n");
     printf("  refuse <name>       - Refuse a challenge\n");
-    printf("  move <hole>         - Play a move (hole 0-5)\n");
-    printf("  chat <msg>          - Send a session chat message\n");
-    printf("  chat <player> <msg> - Send a private chat message\n");
+    printf("  move <id> <hole>    - Play a move in session given by id\n");
+    printf("  pm <player> <msg>   - Send a private chat message\n");
+    printf("  session <id> <msg>  - Send a session chat message\n");
     printf("  games               - List active game sessions\n");
     printf("  spectate <id>       - Observe a game session by id\n");
     printf("  private             - Toggle private mode (only friends can spectate your games)\n");
     printf("  bio view <pseudo>   - View the bio of a player\n");
     printf("  bio edit            - Edit your bio\n");
-    printf("  give up             - Give up a game\n");
+    printf("  give up <id>        - Give up a game\n");
     printf("  addfriend <name>    - Send a friend request to <name> (they must accept)\n");
     printf("  acceptfriend <name> - Accept a pending friend request from <name>\n");
     printf("  refusefriend <name> - Refuse a pending friend request from <name>\n");

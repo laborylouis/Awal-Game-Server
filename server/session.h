@@ -5,9 +5,33 @@
 
 #define MAX_SESSIONS 50
 
+/* Game session structure */
+typedef struct {
+    int active;
+    char player1_name[64];
+    char player2_name[64];
+    SOCKET player1_sock;
+    SOCKET player2_sock;
+    awale_game_t *game;
+    /* Observers for this session */
+    int num_observers;
+    struct {
+        char name[64];
+        SOCKET sock;
+    } observers[10];
+    /* simple move history for saving games */
+    int move_count;
+    struct {
+        char player[64];
+        int hole; /* -1 = give up */
+        time_t when;
+    } moves[1024];
+    time_t start_time;
+} game_session_t;
+
 void sessions_init(void);
 int session_create(const char *player1, SOCKET sock1, const char *player2, SOCKET sock2);
-int session_find_by_player(const char *player_name);
+int session_find_by_player(int sessions[], const char *player_name);
 void session_destroy(int session_id);
 int session_handle_move(int session_id, const char *player_name, int hole);
 void session_broadcast_state(int session_id);

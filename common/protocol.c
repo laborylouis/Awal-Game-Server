@@ -56,14 +56,25 @@ void protocol_create_challenge(message_t *msg, const char *from, const char *to)
     protocol_create_message(msg, MSG_CHALLENGE, from, to, "");
 }
 
-void protocol_create_move(message_t *msg, const char *player, int hole)
+void protocol_create_move(message_t *msg, const char *player, int hole, const char *session_id)
 {
     char data[16];
     snprintf(data, sizeof(data), "%d", hole);
-    protocol_create_message(msg, MSG_PLAY_MOVE, player, "", data);
+    /* puts session id into recipient so server knows which session this move targets */
+    protocol_create_message(msg, MSG_PLAY_MOVE, player, session_id, data);
 }
 
 void protocol_create_chat(message_t *msg, const char *from, const char *to, const char *text)
 {
-    protocol_create_message(msg, MSG_CHAT, from, to, text);
+    protocol_create_message(msg, MSG_PRIVATE_CHAT, from, to, text);
+}
+
+void protocol_create_private_chat(message_t *msg, const char *from, const char *to, const char *text)
+{
+    protocol_create_message(msg, MSG_PRIVATE_CHAT, from, to, text);
+}
+
+void protocol_create_session_chat(message_t *msg, const char *from, const char *session_id, const char *text)
+{
+    protocol_create_message(msg, MSG_SESSION_CHAT, from, session_id, text);
 }

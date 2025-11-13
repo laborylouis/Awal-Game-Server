@@ -8,30 +8,6 @@
 #include "../game/awale.h"
 #include "session.h"
 
-/* Game session structure */
-typedef struct {
-    int active;
-    char player1_name[64];
-    char player2_name[64];
-    SOCKET player1_sock;
-    SOCKET player2_sock;
-    awale_game_t *game;
-    /* Observers for this session */
-    int num_observers;
-    struct {
-        char name[64];
-        SOCKET sock;
-    } observers[10];
-    /* simple move history for saving games */
-    int move_count;
-    struct {
-        char player[64];
-        int hole; /* -1 = give up */
-        time_t when;
-    } moves[1024];
-    time_t start_time;
-} game_session_t;
-
 static game_session_t sessions[MAX_SESSIONS];
 
 /* Save session to a simple text .awale file in ./saved_games */
@@ -85,15 +61,6 @@ static int session_save_game(int session_id)
     return 0;
 }
 
-/* Function prototypes */
-void sessions_init(void);
-int session_create(const char *player1, SOCKET sock1, const char *player2, SOCKET sock2);
-int session_find_by_player(const char *player_name);
-void session_destroy(int session_id);
-int session_handle_move(int session_id, const char *player_name, int hole);
-void session_broadcast_state(int session_id);
-void session_notify_game_over(int session_id);
-
 /* ==================== Session Management ==================== */
 
 void sessions_init(void)
@@ -142,8 +109,12 @@ int session_create(const char *player1, SOCKET sock1, const char *player2, SOCKE
     
     /* Notify both players */
     message_t msg;
-    protocol_create_message(&msg, MSG_GAME_START, "server", player1, player2);
+    /* Send GAME_START with recipient = session id (as string) and data = opponent name */
+    char sid_str[32];
+    snprintf(sid_str, sizeof(sid_str), "%d", slot);
+    protocol_create_message(&msg, MSG_GAME_START, "server", sid_str, player2);
     protocol_send_message(sock1, &msg);
+    protocol_create_message(&msg, MSG_GAME_START, "server", sid_str, player1);
     protocol_send_message(sock2, &msg);
     
     /* Send initial game state */
@@ -152,17 +123,19 @@ int session_create(const char *player1, SOCKET sock1, const char *player2, SOCKE
     return slot;
 }
 
-int session_find_by_player(const char *player_name)
+int session_find_by_player(int games[], const char *player_name)
 {
+    int count = 0;
     for (int i = 0; i < MAX_SESSIONS; i++) {
         if (sessions[i].active) {
             if (strcmp(sessions[i].player1_name, player_name) == 0 ||
                 strcmp(sessions[i].player2_name, player_name) == 0) {
-                return i;
+                games[count] = i;
+                count++;
             }
         }
     }
-    return -1;
+    return count;
 }
 
 void session_destroy(int session_id)
@@ -189,6 +162,10 @@ void session_destroy(int session_id)
 }
 
 int session_handle_move(int session_id, const char *player_name, int hole)
+/*** 
+ * Handles a player's move in the specified session.
+ * Returns 0 on success, 1 on game over, -1 on error (invalid move, not player's turn, etc).
+ */
 {
     if (session_id < 0 || session_id >= MAX_SESSIONS || !sessions[session_id].active) {
         return -1;
@@ -244,6 +221,7 @@ int session_handle_move(int session_id, const char *player_name, int hole)
         session_save_game(session_id);
         session_notify_game_over(session_id);
         session_destroy(session_id);
+        return 1; /* Indicate game over */
     }
     
     return 0;
@@ -263,9 +241,11 @@ void session_broadcast_state(int session_id)
     awale_print_to_buffer(session->game, state_buffer, sizeof(state_buffer),
                                      session->player1_name, session->player2_name);
     
-    /* Send to both players */
+    /* Send to both players; include session id in recipient so clients know which session */
     message_t msg;
-    protocol_create_message(&msg, MSG_GAME_STATE, "server", "", state_buffer);
+    char sid_str[32];
+    snprintf(sid_str, sizeof(sid_str), "%d", session_id);
+    protocol_create_message(&msg, MSG_GAME_STATE, "server", sid_str, state_buffer);
     protocol_send_message(session->player1_sock, &msg);
     protocol_send_message(session->player2_sock, &msg);
 
@@ -298,7 +278,9 @@ void session_notify_game_over(int session_id)
     }
     
     message_t msg;
-    protocol_create_message(&msg, MSG_GAME_OVER, "server", "", result);
+    char sid_str[32];
+    snprintf(sid_str, sizeof(sid_str), "%d", session_id);
+    protocol_create_message(&msg, MSG_GAME_OVER, "server", sid_str, result);
     protocol_send_message(session->player1_sock, &msg);
     protocol_send_message(session->player2_sock, &msg);
     for (int i = 0; i < session->num_observers; i++) {
@@ -362,7 +344,9 @@ int session_add_observer(int session_id, const char *observer_name, SOCKET sock)
     char state_buffer[BUF_SIZE];
     awale_print_to_buffer(s->game, state_buffer, sizeof(state_buffer), s->player1_name, s->player2_name);
     message_t msg;
-    protocol_create_message(&msg, MSG_GAME_STATE, "server", observer_name ? observer_name : "", state_buffer);
+    char sid_str[32];
+    snprintf(sid_str, sizeof(sid_str), "%d", session_id);
+    protocol_create_message(&msg, MSG_GAME_STATE, "server", sid_str, state_buffer);
     protocol_send_message(sock, &msg);
     return 0;
 }

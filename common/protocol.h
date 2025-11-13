@@ -28,7 +28,8 @@ typedef enum {
     MSG_PLAY_MOVE,          /* Client sends move */
     MSG_MOVE_RESULT,        /* Server confirms move or error */
     MSG_GAME_OVER,          /* Game ended */
-    MSG_CHAT,               /* Chat message */
+    MSG_PRIVATE_CHAT,       /* Private chat message */
+    MSG_SESSION_CHAT,       /* Session chat message */
     MSG_ERROR,              /* Error message */
     MSG_BIO_VIEW,           /* Player bio request/response */
     MSG_BIO_EDIT,
@@ -60,7 +61,9 @@ void protocol_create_message(message_t *msg, msg_type_t type,
 /* void protocol_create_login(message_t *msg, const char *username); */
 void protocol_create_login(message_t *msg, const char *username, const char *password);
 void protocol_create_challenge(message_t *msg, const char *from, const char *to);
-void protocol_create_move(message_t *msg, const char *player, int hole);
+void protocol_create_move(message_t *msg, const char *player, int hole, const char *session_id);
 void protocol_create_chat(message_t *msg, const char *from, const char *to, const char *text);
+void protocol_create_private_chat(message_t *msg, const char *from, const char *to, const char *text);
+void protocol_create_session_chat(message_t *msg, const char *from, const char *session_id, const char *text);
 
 #endif /* PROTOCOL_H */
