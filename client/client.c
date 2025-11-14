@@ -7,7 +7,7 @@
 #include "../common/net.h"
 #include "../common/protocol.h"
 
-//Client state
+// Client state
 static SOCKET server_sock = INVALID_SOCKET;
 static char username[64];
 static int in_game = 0;
@@ -15,7 +15,7 @@ static char saved_server_host[128];
 static int saved_server_port = 0;
 static int last_error_invalid_password = 0;
 
-//Function prototypes
+// Function prototypes (small helpers used in this file)
 static void init_client(void);
 static void cleanup_client(void);
 static int connect_to_server(const char *host, int port);
@@ -43,6 +43,7 @@ int main(int argc, char **argv)
     saved_server_host[sizeof(saved_server_host)-1] = '\0';
     saved_server_port = server_port;
     
+    // Initialize network subsystem and local state
     init_client();
 
     /* Connect to server */
@@ -53,7 +54,7 @@ int main(int argc, char **argv)
     
     printf("Connected to server at %s:%d\n", server_host, server_port);
     
-    /* Get username */
+    /* Prompt for username and password, then send login to server */
     printf("Enter your username: ");
     fflush(stdout);
     if (fgets(username, sizeof(username), stdin) == NULL) {
@@ -62,26 +63,27 @@ int main(int argc, char **argv)
     }
     /* Remove newline */
     username[strcspn(username, "\n")] = '\0';
-    
+
     if (strlen(username) == 0) {
         fprintf(stderr, "Username cannot be empty\n");
         cleanup_client();
         return EXIT_FAILURE;
     }
 
-    // refuse username with a space
+    // Disallow spaces in username for simplicity
     if (strchr(username, ' ') != NULL) {
         fprintf(stderr, "Username cannot contain spaces\n");
         cleanup_client();
         return EXIT_FAILURE;
     }
-    
+
     char password[128];
     printf("Enter password: ");
     fflush(stdout);
     if (fgets(password, sizeof(password), stdin) == NULL) password[0] = '\0';
     password[strcspn(password, "\n")] = '\0';
 
+    /* Send login message (password is sent in the message data field) */
     message_t login_msg;
     protocol_create_login(&login_msg, username, password);
     if (protocol_send_message(server_sock, &login_msg) < 0) {
@@ -90,9 +92,10 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    /* Main client loop */
+    //main client loop
     run_client_loop();
     
+    //clean up 
     cleanup_client();
     return EXIT_SUCCESS;
 }
@@ -180,6 +183,7 @@ static void handle_user_input(void)
         protocol_send_message(server_sock, &msg);
     }
     else if (strncmp(input, "challenge ", 10) == 0) {
+        /* challenge a player*/
         char *opponent = input + 10;
         message_t msg;
         protocol_create_challenge(&msg, username, opponent);
@@ -187,7 +191,7 @@ static void handle_user_input(void)
         printf("Challenge sent to %s\n", opponent);
     }
     else if (strncmp(input, "move ", 5) == 0) {
-        /* New syntax: move <session_id> <hole> */
+        /* handle a move */
         char sess[64];
         int hole = -1;
         int scanned = sscanf(input + 5, "%63s %d", sess, &hole);
@@ -200,6 +204,7 @@ static void handle_user_input(void)
         protocol_send_message(server_sock, &msg);
     }
     else if (strncmp(input, "pm ", 3) == 0) {
+        /* handle private chat*/
         message_t msg;
         char *rest = input + 3;
         while (*rest == ' ') rest++;
@@ -219,6 +224,7 @@ static void handle_user_input(void)
         }
     }
     else if (strncmp(input, "session ", 8) == 0) {
+        /* handle session chats*/
         message_t msg;
         char *rest = input + 8;
         while (*rest == ' ') rest++;
@@ -246,7 +252,6 @@ static void handle_user_input(void)
     else if (strcmp(input, "private") == 0) {
         /* Toggle private mode */
         message_t msg;
-        /* Toggle on server by sending data "toggle"; server will flip the flag for this player */
         protocol_create_message(&msg, MSG_SET_PRIVATE, username, "", "toggle");
         protocol_send_message(server_sock, &msg);
     }
@@ -261,6 +266,7 @@ static void handle_user_input(void)
         printf("Requested to observe session %d\n", session_id);
     }
     else if (strcmp(input, "friends") == 0) {
+        /* to print the list of your friends */
         message_t msg;
         protocol_create_message(&msg, MSG_LIST_FRIENDS, username, "", "");
         protocol_send_message(server_sock, &msg);
@@ -273,43 +279,51 @@ static void handle_user_input(void)
         protocol_send_message(server_sock, &msg);
     }
     else if (strncmp(input, "rmfriend ", 9) == 0) {
+        /* to remove a friend of your friends*/
         char *name = input + 9;
         message_t msg;
         protocol_create_message(&msg, MSG_REMOVE_FRIEND, username, "", name);
         protocol_send_message(server_sock, &msg);
     }
     else if (strncmp(input, "acceptfriend ", 13) == 0) {
+        /* To accept a friend requerst */
         char *who = input + 13;
         message_t msg;
         protocol_create_message(&msg, MSG_FRIEND_REQUEST_ACCEPT, username, who, "");
         protocol_send_message(server_sock, &msg);
     }
     else if (strncmp(input, "refusefriend ", 13) == 0) {
+        /* To refuse a friend request */
         char *who = input + 13;
         message_t msg;
         protocol_create_message(&msg, MSG_FRIEND_REQUEST_REFUSE, username, who, "");
         protocol_send_message(server_sock, &msg);
     }
     else if (strcmp(input, "quit") == 0) {
+        /* To quit kill the client */
         printf("Disconnecting...\n");
         exit(0);
     }
     else if (strncmp(input, "accept ", 7) == 0){
+        /* To accept a challenge request */
         message_t msg;
         protocol_create_message(&msg, MSG_CHALLENGE_ACCEPT, username, input +7, "");
         protocol_send_message(server_sock, &msg);
     }
     else if (strncmp(input, "refuse ", 7) == 0){
+        /* To refuse a challenge request */
         message_t msg;
         protocol_create_message(&msg, MSG_CHALLENGE_REFUSE, username, input +7, "");
         protocol_send_message(server_sock, &msg);
     }
     else if(strncmp(input, "bio view ", 9) == 0){
+        /* To read the bio of a player */
         message_t msg;
         protocol_create_message(&msg, MSG_BIO_VIEW, username, input+9, "");
         protocol_send_message(server_sock, &msg);
     }
     else if(strcmp(input, "bio edit") == 0){
+        /* To edit your bio */
         printf("Write your bio now (up to 10 lines). Type '.done' on a line to finish early.\n");
         char lines[10][BUF_SIZE];
         int line_count = 0;
@@ -342,6 +356,7 @@ static void handle_user_input(void)
         protocol_send_message(server_sock, &msg);
     }
     else if (strncmp(input, "give up ", 8) == 0){
+        /* To give up a session*/
         message_t msg;
         protocol_create_message(&msg, MSG_GIVE_UP, username, "", input + 8);
         protocol_send_message(server_sock, &msg);
@@ -357,6 +372,7 @@ static void handle_server_message(void)
     int result = protocol_recv_message(server_sock, &msg);
     
     if (result <= 0) {
+        /* To handle wrongs passwords*/
         if (last_error_invalid_password) {
             if (server_sock != INVALID_SOCKET) net_close(server_sock);
             if (connect_to_server(saved_server_host, saved_server_port) < 0) {
@@ -382,6 +398,7 @@ static void handle_server_message(void)
         exit(0);
     }
     
+    /* To handle all messages of the server */
     switch (msg.type) {
         case MSG_LOGIN_SUCCESS:
             printf("Logged as %s\n", username);
@@ -410,7 +427,6 @@ static void handle_server_message(void)
             break;
 
         case MSG_FRIEND_REQUEST:
-            /* Server informs us that someone requested to be our friend; msg.sender is the requester */
             printf("\n>>> %s sent you a friend request! <<<\n", msg.sender);
             printf("Type 'acceptfriend %s' to accept or 'refusefriend %s' to refuse\n", msg.sender, msg.sender);
             break;

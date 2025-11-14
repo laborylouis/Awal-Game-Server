@@ -17,7 +17,6 @@ static int session_save_game(int session_id)
     game_session_t *s = &sessions[session_id];
     if (!s->active || !s->game) return -1;
 
-    /* sanitize simple filename */
     char p1[128] = {0}, p2[128] = {0};
     for (size_t i = 0; i < sizeof(p1)-1 && s->player1_name[i]; i++) {
         char c = s->player1_name[i]; p1[i] = (c=='/'||c=='\\'||c==':'||c==' ') ? '_' : c;
@@ -27,12 +26,10 @@ static int session_save_game(int session_id)
     }
 
     char fname[1024];
-    /* Build filename without timestamp; if file exists add a numeric suffix */
     snprintf(fname, sizeof(fname), "saved_games/%s_vs_%s.awale", p1, p2);
-    /* If the file exists, try suffixes _1 ... _999 */
     for (int suffix = 1; suffix < 1000; suffix++) {
         FILE *fcheck = fopen(fname, "r");
-        if (!fcheck) break; /* doesn't exist, good */
+        if (!fcheck) break;
         fclose(fcheck);
         snprintf(fname, sizeof(fname), "saved_games/%s_vs_%s_%d.awale", p1, p2, suffix);
     }
@@ -42,7 +39,6 @@ static int session_save_game(int session_id)
 
     fprintf(f, "# Awale saved game v1\n");
     fprintf(f, "players: %s|%s\n", s->player1_name, s->player2_name);
-    /* No timestamps are recorded per request */
     fprintf(f, "winner: %d\n", s->game->winner);
     fprintf(f, "scores: %d %d\n", s->game->scores[0], s->game->scores[1]);
     fprintf(f, "holes:");
@@ -52,7 +48,6 @@ static int session_save_game(int session_id)
     fprintf(f, "moves_count: %d\n", s->move_count);
     fprintf(f, "moves:\n");
     for (int i = 0; i < s->move_count; i++) {
-        /* Write moves as: player|hole (hole=-1 means give up) */
         fprintf(f, "%s|%d\n", s->moves[i].player, s->moves[i].hole);
     }
 
@@ -60,8 +55,6 @@ static int session_save_game(int session_id)
     printf("Saved game to %s\n", fname);
     return 0;
 }
-
-/* ==================== Session Management ==================== */
 
 void sessions_init(void)
 {
@@ -75,9 +68,9 @@ void sessions_init(void)
     }
 }
 
+/* create a session */
 int session_create(const char *player1, SOCKET sock1, const char *player2, SOCKET sock2)
 {
-    /* Find free session slot */
     int slot = -1;
     for (int i = 0; i < MAX_SESSIONS; i++) {
         if (!sessions[i].active) {
@@ -107,9 +100,7 @@ int session_create(const char *player1, SOCKET sock1, const char *player2, SOCKE
     
     printf("Game session %d created: %s vs %s\n", slot, player1, player2);
     
-    /* Notify both players */
     message_t msg;
-    /* Send GAME_START with recipient = session id (as string) and data = opponent name */
     char sid_str[32];
     snprintf(sid_str, sizeof(sid_str), "%d", slot);
     protocol_create_message(&msg, MSG_GAME_START, "server", sid_str, player2);
@@ -123,6 +114,7 @@ int session_create(const char *player1, SOCKET sock1, const char *player2, SOCKE
     return slot;
 }
 
+/* find a session with the name of a player */
 int session_find_by_player(int games[], const char *player_name)
 {
     int count = 0;
@@ -138,6 +130,7 @@ int session_find_by_player(int games[], const char *player_name)
     return count;
 }
 
+/* To clear/destroy a session */
 void session_destroy(int session_id)
 {
     if (session_id < 0 || session_id >= MAX_SESSIONS) {
@@ -148,12 +141,10 @@ void session_destroy(int session_id)
         awale_free(sessions[session_id].game);
         sessions[session_id].game = NULL;
     }
-    /* Notify and clear observers */
     for (int i = 0; i < sessions[session_id].num_observers; i++) {
         message_t msg;
         protocol_create_message(&msg, MSG_GAME_OVER, "server", sessions[session_id].observers[i].name, "Observed game ended");
         protocol_send_message(sessions[session_id].observers[i].sock, &msg);
-        /* do not close observer sockets here; clients manage their own connection */
     }
     sessions[session_id].num_observers = 0;
     
@@ -161,11 +152,8 @@ void session_destroy(int session_id)
     printf("Game session %d destroyed\n", session_id);
 }
 
+/* Handle the move of a player, especially if the game is over, also handle the save of the game*/
 int session_handle_move(int session_id, const char *player_name, int hole)
-/*** 
- * Handles a player's move in the specified session.
- * Returns 0 on success, 1 on game over, -1 on error (invalid move, not player's turn, etc).
- */
 {
     if (session_id < 0 || session_id >= MAX_SESSIONS || !sessions[session_id].active) {
         return -1;
@@ -173,19 +161,16 @@ int session_handle_move(int session_id, const char *player_name, int hole)
     
     game_session_t *session = &sessions[session_id];
     
-    /* Determine which player */
     int player_num;
     if (strcmp(player_name, session->player1_name) == 0) {
         player_num = 0;
     } else if (strcmp(player_name, session->player2_name) == 0) {
         player_num = 1;
     } else {
-        return -1; /* Player not in this game */
+        return -1;
     }
     
-    /* Check if it's this player's turn */
     if (player_num != session->game->current_player) {
-        /* Not this player's turn */
         message_t msg;
         protocol_create_message(&msg, MSG_ERROR, "server", player_name, "Not your turn");
         SOCKET sock = (player_num == 0) ? session->player1_sock : session->player2_sock;
@@ -237,9 +222,7 @@ void session_broadcast_state(int session_id)
     
     /* Convert game state to string (use player names) */
     char state_buffer[BUF_SIZE];
-    /* session->player1_name corresponds to player 0, player2_name to player 1 */
-    awale_print_to_buffer(session->game, state_buffer, sizeof(state_buffer),
-                                     session->player1_name, session->player2_name);
+    awale_print_to_buffer(session->game, state_buffer, sizeof(state_buffer),session->player1_name, session->player2_name);
     
     /* Send to both players; include session id in recipient so clients know which session */
     message_t msg;
@@ -249,12 +232,12 @@ void session_broadcast_state(int session_id)
     protocol_send_message(session->player1_sock, &msg);
     protocol_send_message(session->player2_sock, &msg);
 
-    /* Send to observers as well */
     for (int i = 0; i < session->num_observers; i++) {
         protocol_send_message(session->observers[i].sock, &msg);
     }
 }
 
+// notify the player that game is over with the name of the winner and the score
 void session_notify_game_over(int session_id)
 {
     if (session_id < 0 || session_id >= MAX_SESSIONS || !sessions[session_id].active) {
@@ -312,6 +295,9 @@ const char *session_get_opponent_name(int session_id, const char *player_name)
     return NULL;
 }
 
+
+// Fill provided buffers with the two player names for a session.
+// Returns 0 on success and -1 on invalid session id or inactive session.
 int session_get_players(int session_id, char *p1, int p1_size, char *p2, int p2_size)
 {
     if (session_id < 0 || session_id >= MAX_SESSIONS) return -1;
@@ -351,6 +337,7 @@ int session_add_observer(int session_id, const char *observer_name, SOCKET sock)
     return 0;
 }
 
+//To remove an observer
 int session_remove_observer(int session_id, SOCKET sock)
 {
     if (session_id < 0 || session_id >= MAX_SESSIONS) return -1;

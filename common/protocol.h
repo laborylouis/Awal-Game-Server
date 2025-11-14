@@ -49,21 +49,11 @@ typedef struct {
 /* Protocol functions */
 int protocol_send_message(int sock, const message_t *msg);
 int protocol_recv_message(int sock, message_t *msg);
-void protocol_create_message(message_t *msg, msg_type_t type, 
-                             const char *sender, const char *recipient, 
-                             const char *data);
-
-/* Helper functions for specific messages */
-/* Create a login message. `password` may be NULL or empty; it will be placed in the
-    message data field. Clients should send the clear-text password which the server
-    will hash and verify/register. */
-/* Original simple prototype kept for clarity: create a login message for username. */
-/* void protocol_create_login(message_t *msg, const char *username); */
+void protocol_create_message(message_t *msg, msg_type_t type, const char *sender, const char *recipient, const char *data);
 void protocol_create_login(message_t *msg, const char *username, const char *password);
 void protocol_create_challenge(message_t *msg, const char *from, const char *to);
 void protocol_create_move(message_t *msg, const char *player, int hole, const char *session_id);
-void protocol_create_chat(message_t *msg, const char *from, const char *to, const char *text);
 void protocol_create_private_chat(message_t *msg, const char *from, const char *to, const char *text);
 void protocol_create_session_chat(message_t *msg, const char *from, const char *session_id, const char *text);
 
-#endif /* PROTOCOL_H */
+#endif 

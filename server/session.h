@@ -13,14 +13,14 @@ typedef struct {
     SOCKET player1_sock;
     SOCKET player2_sock;
     awale_game_t *game;
-    /* Observers for this session */
+
     int num_observers;
     struct {
         char name[64];
         SOCKET sock;
     } observers[10];
-    /* simple move history for saving games */
-    int move_count;
+
+    int move_count; // for the save
     struct {
         char player[64];
         int hole; /* -1 = give up */
@@ -29,6 +29,7 @@ typedef struct {
     time_t start_time;
 } game_session_t;
 
+//function prototypes
 void sessions_init(void);
 int session_create(const char *player1, SOCKET sock1, const char *player2, SOCKET sock2);
 int session_find_by_player(int sessions[], const char *player_name);
@@ -41,7 +42,6 @@ int session_give_up(int session_id, const char *player_name);
 int session_add_observer(int session_id, const char *observer_name, SOCKET sock);
 int session_remove_observer(int session_id, SOCKET sock);
 void session_list_games(char *buffer, int size);
-/* Get the two player names for a session. Returns 0 on success, -1 on error */
 int session_get_players(int session_id, char *p1, int p1_size, char *p2, int p2_size);
 
 #endif

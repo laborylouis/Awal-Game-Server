@@ -4,6 +4,11 @@
 #include <string.h>
 #include <errno.h>
 
+// Lightweight network helpers used by both server and client.
+// These wrap common socket operations to keep higher-level code cleaner.
+
+// Initialize network stack on Windows. No-op on POSIX.
+
 void net_init(void)
 {
 #ifdef WIN32
@@ -16,12 +21,17 @@ void net_init(void)
 #endif
 }
 
+// Clean up network stack (Windows). No-op on POSIX.
+
 void net_cleanup(void)
 {
 #ifdef WIN32
     WSACleanup();
 #endif
 }
+
+// Create a TCP socket. On POSIX, set SO_REUSEADDR to make restart easier during development.
+// Returns INVALID_SOCKET on error.
 
 SOCKET net_create_socket(void)
 {
@@ -31,7 +41,6 @@ SOCKET net_create_socket(void)
         return INVALID_SOCKET;
     }
     
-    /* Set socket options for reusability */
 #ifndef WIN32
     int opt = 1;
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
@@ -41,6 +50,9 @@ SOCKET net_create_socket(void)
     
     return sock;
 }
+
+// Bind a socket to all network interfaces on the given port.
+// Returns 0 on success, -1 on failure.
 
 int net_bind_socket(SOCKET sock, int port)
 {
@@ -56,6 +68,8 @@ int net_bind_socket(SOCKET sock, int port)
     return 0;
 }
 
+// Put a socket into listening state with the provided backlog.
+
 int net_listen_socket(SOCKET sock, int backlog)
 {
     if (listen(sock, backlog) == SOCKET_ERROR) {
@@ -64,6 +78,9 @@ int net_listen_socket(SOCKET sock, int backlog)
     }
     return 0;
 }
+
+// Accept a new incoming connection. Returns the client socket or INVALID_SOCKET on error.
+// client_addr is filled with the remote address (if non-NULL).
 
 SOCKET net_accept_connection(SOCKET sock, SOCKADDR_IN *client_addr)
 {
@@ -76,6 +93,8 @@ SOCKET net_accept_connection(SOCKET sock, SOCKADDR_IN *client_addr)
     }
     return client_sock;
 }
+
+// Connect a socket to a remote IPv4 address and port. Returns 0 on success.
 
 int net_connect(SOCKET sock, const char *host, int port)
 {
@@ -95,6 +114,9 @@ int net_connect(SOCKET sock, const char *host, int port)
     return 0;
 }
 
+// Wrap send(). Returns number of bytes sent or -1 on error.
+
+
 int net_send(SOCKET sock, const char *buffer, int len)
 {
     int sent = send(sock, buffer, len, 0);
@@ -104,6 +126,9 @@ int net_send(SOCKET sock, const char *buffer, int len)
     }
     return sent;
 }
+
+// Simple recv wrapper that null-terminates the received data (useful for text messages).
+// Returns number of bytes received, 0 on orderly shutdown, or -1 on error.
 
 int net_recv(SOCKET sock, char *buffer, int max_len)
 {
@@ -116,7 +141,10 @@ int net_recv(SOCKET sock, char *buffer, int max_len)
     return received;
 }
 
+// Close a socket (closesocket is aliased to close on POSIX builds).
+
 void net_close(SOCKET sock)
 {
     closesocket(sock);
 }
+

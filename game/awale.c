@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+
+// Create and initialize a new Awalé game object.
 awale_game_t* awale_create(void){
 
     awale_game_t *game = (awale_game_t*)malloc(sizeof(awale_game_t));
@@ -13,6 +15,7 @@ awale_game_t* awale_create(void){
     return game;
 }
 
+// Reset an existing game state to the initial configuration.
 void awale_reset(awale_game_t *game){
     for (int i = 0; i< 2; ++i) game->scores[i]=0;
     for (int i = 0; i < TOTAL_HOLES; ++i) game->holes[i] = 4;  
@@ -21,18 +24,21 @@ void awale_reset(awale_game_t *game){
     game->winner = -1;
 }
 
+// Free a previously allocated game object.
 void awale_free(awale_game_t *game){
     if (game) {
         free(game);
     }
 }
 
+// Switch the current player (toggle between player 0 and 1).
 void awale_switch_player(awale_game_t *game){
     if (game){
         game->current_player = 1 - game->current_player;
     }
 }
 
+// Check whether a move (hole index) is valid for the current player.
 int awale_is_valid_move(const awale_game_t *game, int hole){
     if (!game) {
         return 0;
@@ -61,6 +67,8 @@ int awale_is_valid_move(const awale_game_t *game, int hole){
     return 1;
 }
 
+// Execute a move: sow seeds from `hole`, apply capture rules and update scores.
+// Returns an awale_status_t indicating success or error reason.
 awale_status_t awale_play_move(awale_game_t *game, int hole){
     if (!awale_is_valid_move(game, hole)) {
         if (!game) return AWALE_INVALID_MOVE;
@@ -137,6 +145,7 @@ awale_status_t awale_play_move(awale_game_t *game, int hole){
     return AWALE_OK;
 }
 
+// Return whether the game has finished.
 int awale_is_game_over(const awale_game_t *game){
     if (!game) {
         return 1;
@@ -144,6 +153,7 @@ int awale_is_game_over(const awale_game_t *game){
     return game->game_over;
 }
 
+// Get the winner index (0 or 1) or -1 if draw/unknown.
 int awale_get_winner(const awale_game_t *game){
     if (!game) {
         return -1;
@@ -151,6 +161,7 @@ int awale_get_winner(const awale_game_t *game){
     return game->winner;
 }
 
+// Retrieve the score for the specified player (0 or 1).
 int awale_get_score(const awale_game_t *game, int player){
     if (!game || player < 0 || player > 1) {
         return -1;
@@ -158,10 +169,10 @@ int awale_get_score(const awale_game_t *game, int player){
     return game->scores[player];
 }
 
+// Pretty-print the current board and scores to stdout with optional player names.
 void awale_print(const awale_game_t *game, const char *player0_name, const char *player1_name){
     if (!game) return;
 
-    /* Build padded labels so columns stay aligned for variable-length names */
         const char *p0 = player0_name ? player0_name : "Player 0";
         const char *p1 = player1_name ? player1_name : "Player 1";
         char top_label[128];
@@ -170,28 +181,24 @@ void awale_print(const awale_game_t *game, const char *player0_name, const char 
         snprintf(bottom_label, sizeof(bottom_label), "%s:  ", p0);
         size_t max_label = strlen(top_label) > strlen(bottom_label) ? strlen(top_label) : strlen(bottom_label);
 
-        /* Header numbers */
         printf("%*s", (int)max_label, "");
         for (int i = TOTAL_HOLES - 1; i >= HOLES_PER_PLAYER; i--) {
             printf(" %2d  ", i);
         }
         printf("\n");
 
-        /* Top row is player 1 (holes 6..11) */
         printf("%-*s", (int)max_label, top_label);
         for (int i = TOTAL_HOLES - 1; i >= HOLES_PER_PLAYER; i--) {
             printf("[%2d] ", game->holes[i]);
         }
         printf("  Score: %d\n", game->scores[1]);
 
-        /* Bottom row is player 0 (holes 0..5) */
         printf("%-*s", (int)max_label, bottom_label);
         for (int i = 0; i < HOLES_PER_PLAYER; i++) {
             printf("[%2d] ", game->holes[i]);
         }
         printf("  Score: %d\n", game->scores[0]);
 
-        /* Footer numbers */
         printf("%*s", (int)max_label, "");
         for (int i = 0; i < HOLES_PER_PLAYER; i++) {
             printf(" %2d  ", i);
@@ -215,6 +222,7 @@ void awale_print(const awale_game_t *game, const char *player0_name, const char 
 
 
 
+// Format the board and status into `buffer` (safe snprintf usage).
 void awale_print_to_buffer(const awale_game_t *game, char *buffer, int size,
                                      const char *player0_name, const char *player1_name){
     if (!game || !buffer || size <= 0) return;
@@ -269,6 +277,7 @@ void awale_print_to_buffer(const awale_game_t *game, char *buffer, int size,
     }
 }
 
+// Save a simple textual snapshot of the game to `filename`.
 int awale_save(const awale_game_t *game, const char *filename){
     if (!game || !filename) {
         return -1;
@@ -293,6 +302,7 @@ int awale_save(const awale_game_t *game, const char *filename){
     return 0;
 }
 
+// Load a game snapshot from `filename`, returning a newly allocated game object.
 awale_game_t* awale_load(const char *filename){
     if (!filename) {
         return NULL;
@@ -335,6 +345,7 @@ awale_game_t* awale_load(const char *filename){
     return game;
 }
 
+// Convert an awale_status_t value to a human-readable string.
 const char* awale_status_string(awale_status_t status){
     switch (status) {
         case AWALE_OK:
