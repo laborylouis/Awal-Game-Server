@@ -75,7 +75,12 @@ The following commands are available in the console client (`client/client.c`). 
 - `quit`: Disconnect and exit the client.
 
 ## 🤖 AI usage
-We used an AI assistant during development (GPT-5 mini) to help with code structuring for the beginning of the project, bug fixes and documentation generation.
+We used an AI assistant during development (GPT-5 mini) to help with :
+- code structuring for the beginning of the project (especially .h files), 
+- bug fixes, 
+- documentation generation.
+
+Our use of AI was intended to save time on repetitive tasks and help us structure the code initially. Sometimes the AI generated incorrect code, so we always manually checked and corrected what it produced to ensure its quality.
 
 
 
