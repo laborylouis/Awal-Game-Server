@@ -369,7 +369,9 @@ static void handle_new_connection(SOCKET server_sock)
                     if (idx >= 0) {
                         printf("Player '%s' logged in\n", username);
                         message_t ok_msg;
-                        protocol_create_message(&ok_msg, MSG_LOGIN_SUCCESS, "server", username, "Login successful");
+                        char msg_content[128];
+                        snprintf(msg_content, sizeof(msg_content), "Logged as %s", username);
+                        protocol_create_message(&ok_msg, MSG_LOGIN_SUCCESS, "server", username, msg_content);
                         protocol_send_message(client_sock, &ok_msg);
                     } else {
                         message_t err;

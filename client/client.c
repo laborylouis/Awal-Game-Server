@@ -401,7 +401,7 @@ static void handle_server_message(void)
     /* To handle all messages of the server */
     switch (msg.type) {
         case MSG_LOGIN_SUCCESS:
-            printf("Logged as %s\n", username);
+            printf("%s", msg.data);
             printf("\nType 'help' for available commands\n\n");
             break;
 
