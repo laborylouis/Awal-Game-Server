@@ -392,7 +392,9 @@ static void handle_new_connection(SOCKET server_sock)
                 if (idx >= 0) {
                     printf("Registered and logged in new player '%s'\n", username);
                     message_t ok_msg;
-                    protocol_create_private_chat(&ok_msg, "server", username, "Account created and logged in. Welcome!");
+                    char msg_content[128];
+                    snprintf(msg_content, sizeof(msg_content), "Account created and logged in");
+                    protocol_create_message(&ok_msg, MSG_LOGIN_SUCCESS, "server", username, msg_content);
                     protocol_send_message(client_sock, &ok_msg);
                 } else {
                     message_t err;
