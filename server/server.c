@@ -381,7 +381,9 @@ static void handle_new_connection(SOCKET server_sock)
                         printf("Player '%s' logged in\n", username);
                         /* Notify client that login succeeded */
                         message_t ok_msg;
-                        protocol_create_message(&ok_msg, MSG_LOGIN_SUCCESS, "server", username, "Login successful");
+                        char msg_content[128];
+                        snprintf(msg_content, sizeof(msg_content), "Logged as %s", username);
+                        protocol_create_message(&ok_msg, MSG_LOGIN_SUCCESS, "server", username, msg_content);
                         protocol_send_message(client_sock, &ok_msg);
                     } else {
                         message_t err;
@@ -404,7 +406,7 @@ static void handle_new_connection(SOCKET server_sock)
                     printf("Registered and logged in new player '%s'\n", username);
                     /* Notify client that registration and login succeeded */
                     message_t ok_msg;
-                    protocol_create_chat(&ok_msg, "server", username, "Account created and logged in. Welcome!");
+                    protocol_create_message(&ok_msg, MSG_LOGIN_SUCCESS, "server", username, "Account created and logged in");
                     protocol_send_message(client_sock, &ok_msg);
                 } else {
                     message_t err;
