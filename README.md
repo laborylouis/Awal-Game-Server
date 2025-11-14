@@ -21,6 +21,12 @@ Ce projet implémente un serveur de jeu permettant à plusieurs clients de :
 
 Le serveur et le client communiquent via un protocole simple basé sur l'envoi d'une structure `message_t` (voir `common/protocol.h`).
 
+## 🗂 Fichiers importants
+
+- `accounts.db` : fichier texte contenant les comptes (nom|hash|bio_escaped). Ne pas modifier à la main sans précautions.
+- `saved_games/` : sauvegardes de parties terminées.
+- `Makefile` : compilation et règles d'exécution.## 🗂 Fichiers importants
+
 ## ⚙️ Prérequis
 
 - Un environnement POSIX (Linux / WSL) ou Windows avec GCC compatible.
@@ -49,12 +55,6 @@ Pour nettoyer les artefacts de build :
 make clean
 ```
 
-## 🗂 Fichiers importants
-
-- `accounts.db` : fichier texte contenant les comptes (nom|hash|bio_escaped). Ne pas modifier à la main sans précautions.
-- `saved_games/` : sauvegardes de parties terminées.
-- `Makefile` : compilation et règles d'exécution.
-
 ## 🧭 Manuel utilisateur (commandes client)
 
 Les commandes suivantes sont disponibles dans le client console (`client/client.c`). Tapez `help` en session pour afficher ces commandes.
@@ -73,15 +73,6 @@ Les commandes suivantes sont disponibles dans le client console (`client/client.
 - `bio edit` : Éditer votre bio (multi‑ligne, terminez par `.done`).
 - `give up` : Abandonner la partie en cours.
 - `quit` : Déconnecter et quitter le client.
-
-### Comportements notables
-- Lorsqu'un mot de passe est invalide, le serveur renvoie `MSG_ERROR` (texte `Invalid password`) et ferme la connexion : le client détecte l'EOF et propose de retenter le mot de passe.
-- Le serveur garde plusieurs demandes de défi en attente par joueur ; `accept <name>` ne fonctionne que si `<name>` figure dans votre liste de challengers en attente.
-
-## 🎯 Bonnes pratiques et sécurité
-
-- À l'heure actuelle, le mot de passe est envoyé en clair par le client et stocké / comparé de façon simplifiée. Il est fortement recommandé d'améliorer cela (hachage côté serveur avec sel unique, transport TLS ou méthode d'authentification sans mot de passe) pour une utilisation réseau réelle.
-- Limitez l'accès au fichier `accounts.db` et considérez des protections contre le brute-force (verrouillage temporaire, temporisation).
 
 ## 🧪 Tests manuels rapides
 
