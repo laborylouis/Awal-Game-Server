@@ -1,91 +1,81 @@
 # Awalé Game Server
 
-Serveur de jeu Awalé multi-joueurs développé en C dans le cadre du TP 2/3/4 de Programmation Réseaux (4IF).
+Awalé multiplayer game server written in C as part of the Network Programming lab work (TP 2/3/4, 4IF).
 
 ## 📋 Description
 
-Ce projet implémente un serveur de jeu permettant à plusieurs clients de :
-- Se connecter avec un nom d'utilisateur
-- Défier d'autres joueurs
-- Jouer des parties d'Awalé en respectant les règles officielles
-- Communiquer via chat
-- et bien d'autres fonctionnalités...
+This project implements a game server that allows multiple clients to:
+- Connect with a username
+- Challenge other players
+- Play Awalé matches following the official rules
+- Communicate via chat
+- And other features in progress
 
 ## 🏗️ Architecture
 
-- `server/` : code du serveur (`server.c`, `session.c`). Gère les connexions, sessions de jeu, stockage des comptes et persistance des parties.
-- `client/` : client console (`client.c`) permettant de se connecter, défier, discuter et jouer.
-- `common/` : bibliothèques partagées (`net.c`, `protocol.c`) gérant le transport bas-niveau et la structure des messages.
-- `game/` : implémentation du moteur Awalé (`awale.c`, règles et état de partie).
-- `saved_games/` : répertoire où les parties terminées sont enregistrées au format `.awale`.
+- `server/`: server code (`server.c`, `session.c`) — handles connections, game sessions, account storage and game persistence.
+- `client/`: console client (`client.c`) — connect, challenge, chat and play.
+- `common/`: shared libraries (`net.c`, `protocol.c`) that provide low-level transport and message structures.
+- `game/`: Awalé engine implementation (`awale.c`) and game state.
+- `saved_games/`: directory where finished games are saved as `.awale` files.
 
-Le serveur et le client communiquent via un protocole simple basé sur l'envoi d'une structure `message_t` (voir `common/protocol.h`).
+The server and client communicate using a simple protocol that sends a `message_t` structure (see `common/protocol.h`).
 
-## 🗂 Fichiers importants
+## 🗂 Important files
 
-- `accounts.db` : fichier texte contenant les comptes (nom|hash|bio_escaped). Ne pas modifier à la main sans précautions.
-- `saved_games/` : sauvegardes de parties terminées.
-- `Makefile` : compilation et règles d'exécution.## 🗂 Fichiers importants
+- `accounts.db`: text file holding accounts in the format `name|hash|bio_escaped`. Do not edit manually without care.
+- `saved_games/`: saved finished games.
+- `Makefile`: build and run rules.
 
-## ⚙️ Prérequis
+## ⚙️ Prerequisites
 
-- Un environnement POSIX (Linux / WSL) ou Windows avec GCC compatible.
-- `make` et `gcc` installés pour utiliser le `Makefile` fourni.
+- A POSIX environment (Linux / WSL) or Windows with a compatible GCC toolchain.
+- `make` and `gcc` installed to use the provided `Makefile`.
 
-## 🔧 Compilation et exécution
+## 🔧 Build & Run
 
-Depuis la racine du projet, en WSL ou Linux :
+From the project root (WSL or Linux):
 
 ```bash
-# Compiler le serveur et le client
+# Build server and client
 make
 
-# Lancer le serveur (port par défaut : 1977)
+# Run the server (default port: 1977)
 ./awale_server
 
-# Lancer un client (optionnel : host port)
+# Run a client (optional: host port)
 ./awale_client 127.0.0.1 1977
 ```
 
-Vous pouvez aussi utiliser les cibles `make run-server` et `make run-client` qui lancent respectivement le serveur et le client compilés.
+You can also use the `make run-server` and `make run-client` targets to run the compiled server and client.
 
-Pour nettoyer les artefacts de build :
+To clean build artifacts:
 
 ```bash
 make clean
 ```
 
-## 🧭 Manuel utilisateur (commandes client)
+## 🧭 User manual (client commands)
 
-Les commandes suivantes sont disponibles dans le client console (`client/client.c`). Tapez `help` en session pour afficher ces commandes.
+The following commands are available in the console client (`client/client.c`). Type `help` during a session to display them.
 
-- `help` : Affiche l'aide.
-- `list` : Liste les joueurs actuellement en ligne.
-- `challenge <name>` : Défier `<name>` ; le joueur ciblé reçoit une notification et peut accepter ou refuser.
-- `accept <name>` : Accepte le défi provenant de `<name>`. Cette commande ne fonctionne que si `<name>` vous a effectivement challengé (le serveur garde une liste de demandes en attente).
-- `refuse <name>` : Refuse le défi provenant de `<name>`.
-- `move <hole>` : Jouer un coup sur le trou `0-5` (uniquement lorsque vous êtes en jeu).
-- `chat <msg>` : Envoyer un message de session (à l'adversaire) si vous êtes en jeu.
-- `chat <player> <msg>` : Envoyer un message privé à un autre joueur.
-- `games` : Liste des sessions de jeu actives (identifiants et participants).
-- `spectate <id>` : Demande à observer la session d'identifiant `<id>`.
-- `bio view <pseudo>` : Voir la bio d'un joueur.
-- `bio edit` : Éditer votre bio (multi‑ligne, terminez par `.done`).
-- `give up` : Abandonner la partie en cours.
-- `quit` : Déconnecter et quitter le client.
+- `help`: Show the help text.
+- `list`: Show currently online players.
+- `challenge <name>`: Challenge `<name>`; the target player receives a prompt and may accept or refuse.
+- `accept <name>`: Accept a challenge from `<name>`. This only works if `<name>` actually challenged you (the server keeps a list of pending challenge requests).
+- `refuse <name>`: Refuse a challenge from `<name>`.
+- `move <hole>`: Play a move on hole `0-5` (only while in a game).
+- `chat <msg>`: Send a session chat message to your opponent (when in a game).
+- `chat <player> <msg>`: Send a private chat message to another player.
+- `games`: List active game sessions (IDs and participants).
+- `spectate <id>`: Request to observe session with id `<id>`.
+- `bio view <pseudo>`: View a player's bio.
+- `bio edit`: Edit your bio (multi-line; finish with `.done`).
+- `give up`: Give up the current game.
+- `quit`: Disconnect and exit the client.
 
-## 🧪 Tests manuels rapides
+## 🤖 AI usage
+We used an AI assistant during development (GPT-5 mini) to help with code structuring for the beginning of the project, bug fixes and documentation generation.
 
-1. Compiler (`make`).
-2. Lancer le serveur : `./awale_server`.
-3. Ouvrir deux terminaux et lancer `./awale_client` dans chacun.
-4. Dans le client A : `challenge B`.
-5. Dans le client B : vous verrez la notification et pouvez `accept A` ou `refuse A`.
-
-## 🤖 Utilisation de l'IA
-Nous avons utilisé le modèle GPT-5 mini d'OpenAI dans le cadre du développement de ce projet pour :
-- nous aider dans la structuration/organisation du code,
-- corriger notre code lorsqu'il était non fonctionnel,
-- Générer le README.md et la documentation des fonctions.
 
 

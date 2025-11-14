@@ -7,16 +7,15 @@
 #include "../common/net.h"
 #include "../common/protocol.h"
 
-/* Client state */
+//Client state
 static SOCKET server_sock = INVALID_SOCKET;
 static char username[64];
 static int in_game = 0;
-
 static char saved_server_host[128];
 static int saved_server_port = 0;
 static int last_error_invalid_password = 0;
 
-/* Function prototypes */
+//Function prototypes
 static void init_client(void);
 static void cleanup_client(void);
 static int connect_to_server(const char *host, int port);
@@ -25,6 +24,7 @@ static void handle_user_input(void);
 static void handle_server_message(void);
 static void print_help(void);
 
+//main
 int main(int argc, char **argv)
 {
     const char *server_host = "127.0.0.1";
