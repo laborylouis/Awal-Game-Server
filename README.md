@@ -9,176 +9,92 @@ Ce projet implémente un serveur de jeu permettant à plusieurs clients de :
 - Défier d'autres joueurs
 - Jouer des parties d'Awalé en respectant les règles officielles
 - Communiquer via chat
-- (À venir) Observer des parties en cours, gérer des tournois, etc.
+- et bien d'autres fonctionnalités...
 
 ## 🏗️ Architecture
 
-Le projet est organisé en modules indépendants pour faciliter l'extensibilité :
+- `server/` : code du serveur (`server.c`, `session.c`). Gère les connexions, sessions de jeu, stockage des comptes et persistance des parties.
+- `client/` : client console (`client.c`) permettant de se connecter, défier, discuter et jouer.
+- `common/` : bibliothèques partagées (`net.c`, `protocol.c`) gérant le transport bas-niveau et la structure des messages.
+- `game/` : implémentation du moteur Awalé (`awale.c`, règles et état de partie).
+- `saved_games/` : répertoire où les parties terminées sont enregistrées au format `.awale`.
 
-```
-Awal-Game-Server/
-├── common/          # Code réseau commun (client/serveur)
-│   ├── net.h/c      # Abstraction socket multiplateforme
-│   └── protocol.h/c # Protocole de communication
-├── game/            # Moteur de jeu Awalé (indépendant du réseau)
-│   └── awale.h/c    # Logique du jeu, règles, affichage
-├── server/          # Serveur de jeu
-│   ├── server.c     # Boucle principale, gestion clients
-│   └── session.c    # Gestion des parties en cours
-└── client/          # Client de jeu
-    └── client.c     # Interface utilisateur en ligne de commande
-```
+Le serveur et le client communiquent via un protocole simple basé sur l'envoi d'une structure `message_t` (voir `common/protocol.h`).
 
-## 🎮 Règles du jeu Awalé
+## ⚙️ Prérequis
 
-L'Awalé est un jeu traditionnel africain pour 2 joueurs. Chaque joueur possède 6 trous contenant initialement 4 graines. Le but est de capturer plus de 25 graines (sur 48 au total).
+- Un environnement POSIX (Linux / WSL) ou Windows avec GCC compatible.
+- `make` et `gcc` installés pour utiliser le `Makefile` fourni.
 
-**Règles implémentées :**
-- Distribution des graines dans le sens anti-horaire
-- Capture des graines (2 ou 3 graines) sur le côté adverse
-- Règle de famine : interdiction d'affamer l'adversaire
-- Fin de partie quand un joueur a > 25 graines ou qu'aucun coup n'est possible
+## 🔧 Compilation et exécution
 
-Voir : https://fr.wikipedia.org/wiki/Awalé
-
-## 🔧 Compilation
-
-### Prérequis
-- GCC (ou compatible C99)
-- Make
-- Système Unix/Linux ou WSL sous Windows
-
-### Commandes
+Depuis la racine du projet, en WSL ou Linux :
 
 ```bash
-# Compiler tout le projet
+# Compiler le serveur et le client
 make
 
-# Compiler uniquement le serveur
-make awale_server
+# Lancer le serveur (port par défaut : 1977)
+./awale_server
 
-# Compiler uniquement le client
-make awale_client
+# Lancer un client (optionnel : host port)
+./awale_client 127.0.0.1 1977
+```
 
-# Nettoyer et recompiler
-make rebuild
+Vous pouvez aussi utiliser les cibles `make run-server` et `make run-client` qui lancent respectivement le serveur et le client compilés.
 
-# Nettoyer les fichiers objets
+Pour nettoyer les artefacts de build :
+
+```bash
 make clean
 ```
 
-## 🚀 Utilisation
+## 🗂 Fichiers importants
 
-### Lancer le serveur
+- `accounts.db` : fichier texte contenant les comptes (nom|hash|bio_escaped). Ne pas modifier à la main sans précautions.
+- `saved_games/` : sauvegardes de parties terminées.
+- `Makefile` : compilation et règles d'exécution.
 
-```bash
-./awale_server
-```
+## 🧭 Manuel utilisateur (commandes client)
 
-Le serveur écoute par défaut sur le port **1977**.
+Les commandes suivantes sont disponibles dans le client console (`client/client.c`). Tapez `help` en session pour afficher ces commandes.
 
-### Lancer un client
+- `help` : Affiche l'aide.
+- `list` : Liste les joueurs actuellement en ligne.
+- `challenge <name>` : Défier `<name>` ; le joueur ciblé reçoit une notification et peut accepter ou refuser.
+- `accept <name>` : Accepte le défi provenant de `<name>`. Cette commande ne fonctionne que si `<name>` vous a effectivement challengé (le serveur garde une liste de demandes en attente).
+- `refuse <name>` : Refuse le défi provenant de `<name>`.
+- `move <hole>` : Jouer un coup sur le trou `0-5` (uniquement lorsque vous êtes en jeu).
+- `chat <msg>` : Envoyer un message de session (à l'adversaire) si vous êtes en jeu.
+- `chat <player> <msg>` : Envoyer un message privé à un autre joueur.
+- `games` : Liste des sessions de jeu actives (identifiants et participants).
+- `spectate <id>` : Demande à observer la session d'identifiant `<id>`.
+- `bio view <pseudo>` : Voir la bio d'un joueur.
+- `bio edit` : Éditer votre bio (multi‑ligne, terminez par `.done`).
+- `give up` : Abandonner la partie en cours.
+- `quit` : Déconnecter et quitter le client.
 
-```bash
-# Connexion locale
-./awale_client
+### Comportements notables
+- Lorsqu'un mot de passe est invalide, le serveur renvoie `MSG_ERROR` (texte `Invalid password`) et ferme la connexion : le client détecte l'EOF et propose de retenter le mot de passe.
+- Le serveur garde plusieurs demandes de défi en attente par joueur ; `accept <name>` ne fonctionne que si `<name>` figure dans votre liste de challengers en attente.
 
-# Connexion à un serveur distant
-./awale_client <adresse_IP> <port>
-```
+## 🎯 Bonnes pratiques et sécurité
 
-### Commandes client
+- À l'heure actuelle, le mot de passe est envoyé en clair par le client et stocké / comparé de façon simplifiée. Il est fortement recommandé d'améliorer cela (hachage côté serveur avec sel unique, transport TLS ou méthode d'authentification sans mot de passe) pour une utilisation réseau réelle.
+- Limitez l'accès au fichier `accounts.db` et considérez des protections contre le brute-force (verrouillage temporaire, temporisation).
 
-Une fois connecté, vous pouvez utiliser :
+## 🧪 Tests manuels rapides
 
-```
-help              - Affiche l'aide
-list              - Liste les joueurs en ligne
-challenge <nom>   - Défier un joueur
-accept <nom>      - Accepter un défi
-refuse <nom>      - Refuser un défi
-move <trou>       - Jouer un coup (trou 0-5)
-chat <message>    - Envoyer un message
-quit              - Quitter
-```
+1. Compiler (`make`).
+2. Lancer le serveur : `./awale_server`.
+3. Ouvrir deux terminaux et lancer `./awale_client` dans chacun.
+4. Dans le client A : `challenge B`.
+5. Dans le client B : vous verrez la notification et pouvez `accept A` ou `refuse A`.
 
-## 📊 État d'implémentation
+## 🤖 Utilisation de l'IA
+Nous avons utilisé le modèle GPT-5 mini d'OpenAI dans le cadre du développement de ce projet pour :
+- nous aider dans la structuration/organisation du code,
+- corriger notre code lorsqu'il était non fonctionnel,
+- Générer le README.md et la documentation des fonctions.
 
-### ✅ Étape 0 - Moteur de jeu (COMPLET)
-- [x] Représentation du plateau
-- [x] Validation des coups
-- [x] Distribution des graines
-- [x] Capture des graines
-- [x] Détection de fin de partie
-- [x] Affichage ASCII
-- [x] Sauvegarde/chargement de partie
 
-### 🚧 Étape 1-3 - Client/Serveur de base (EN COURS)
-- [x] Architecture réseau multiplateforme
-- [x] Protocole de messages
-- [x] Connexion/déconnexion clients
-- [x] Gestion sessions de jeu
-- [ ] Liste des joueurs en ligne
-- [ ] Système de défi/acceptation
-- [ ] Diffusion état du jeu
-
-### 📝 Étapes futures (À FAIRE)
-- [ ] Chat général et privé
-- [ ] Mode spectateur
-- [ ] Biographie joueurs
-- [ ] Historique des parties
-- [ ] Système de classement ELO
-- [ ] Tournois
-- [ ] Reconnexion en cas de déconnexion
-
-## 🧪 Tests
-
-Pour tester le moteur de jeu indépendamment :
-
-```bash
-# Créer un fichier de test
-cat > test_game.c << 'EOF'
-#include "game/awale.h"
-
-int main() {
-    awale_game_t *game = awale_create();
-    awale_print(game);
-    
-    awale_play_move(game, 2);
-    awale_print(game);
-    
-    awale_free(game);
-    return 0;
-}
-EOF
-
-gcc -o test_game test_game.c game/awale.c
-./test_game
-```
-
-## 📝 Format de protocole
-
-Les messages client-serveur utilisent une structure simple :
-
-```c
-typedef struct {
-    msg_type_t type;      // Type de message
-    char sender[64];      // Expéditeur
-    char recipient[64];   // Destinataire
-    char data[1024];      // Données
-} message_t;
-```
-
-Types de messages : LOGIN, CHALLENGE, PLAY_MOVE, GAME_STATE, CHAT, etc.
-
-## 🤝 Contributeurs
-
-- Louis LABORY (labory@insa-lyon.fr)
-
-## 📄 Licence
-
-Projet académique INSA Lyon - 4IF Programmation Réseaux
-
----
-
-**Note :** Ce projet est en cours de développement. Les fonctionnalités marquées comme "À FAIRE" seront implémentées progressivement.
